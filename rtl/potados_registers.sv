@@ -1,7 +1,6 @@
 `ifndef POTADOS_REGISTERS_SV
 `define POTADOS_REGISTERS_SV
 
-
 `timescale 1ns / 1ns
 `include "potados_common.sv"
 
@@ -47,7 +46,7 @@ module potados_registers  (
             // Explicit SP writes take priority over automatic stack updates.
             // Increment and decrement enables are mutually exclusive.
             if (write_request.write_enable && write_request.write_address == 3'b001) begin
-                regs.SP <= stack_pointer_request.write_data;
+                regs.SP <= write_request.write_data;
             end else if (stack_pointer_request.operation == STACK_POINTER_WRITE) begin
                 regs.SP <= stack_pointer_request.write_data;
             end else if (stack_pointer_request.operation == STACK_POINTER_INCREMENT) begin
@@ -87,9 +86,6 @@ module potados_registers  (
         read_response.stack_pointer = regs.SP;
         read_response.stack_pointer_decremented = regs.SP - 16'h0001;
     end
-
-
 endmodule
-
 
 `endif

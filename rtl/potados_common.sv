@@ -208,11 +208,24 @@ typedef struct packed {
 
 // Values produced by execute and consumed by the data-memory stage.
 typedef struct packed {
+    // A completed execute-stage entry is present.
     logic valid;
 
+    // Result produced by the integer ALU; also the effective RAM address for
+    // MEMORY_LOAD and MEMORY_STORE.
     logic [15:0] alu_result;
-    logic [15:0] memory_data;
-    logic [15:0] pc_next;
+    // Data presented to RAM for MEMORY_STORE.
+    logic [15:0] memory_write_data;
+    // Result supplied by the optional FPU execution unit.
+    logic [15:0] fpu_result;
+    // Address of the next sequential instruction, used by JAL/JALR writeback.
+    logic [15:0] next_pc;
+
+    // Data-memory request and stack-pointer update associated with this entry.
+    memory_op_t memory_op;
+    stack_pointer_op_t stack_pointer_op;
+
+    // Destination and source selection used by the writeback stage.
     logic [2:0] dst;
     writeback_source_t writeback_source;
 } memory_stage_t;

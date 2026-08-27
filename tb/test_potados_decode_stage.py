@@ -35,7 +35,6 @@ async def _reset(dut: Dut) -> None:
     dut.register_write_enable.value = 0
     dut.register_write_address.value = 0
     dut.register_write_data.value = 0
-    dut.stack_pointer_write_enable.value = 0
     dut.stack_pointer_write_data.value = 0
     dut.stack_pointer_operation.value = 0
     await _clock_cycle(dut)
@@ -289,14 +288,14 @@ async def decode_stage_prepares_stack_fpu_and_halt(dut: Dut) -> None:
     await _expect_execute_stage(
         dut, 0b1100_000_001_000_011,
         operand_a=0x0400, memory_write_data=0x2222, dst=0b011,
-        alu_op=0b00001, memory_op=0b10, stack_pointer_op=0b01,
+        alu_op=0b00001, memory_op=0b10, stack_pointer_op=0b10,
     )
 
     # POP R2
     await _expect_execute_stage(
         dut, 0b1100_000_010_000_010,
         operand_a=0x03FF, dst=0b010, alu_op=0b00001,
-        memory_op=0b01, stack_pointer_op=0b10, writeback_source=0b010,
+        memory_op=0b01, stack_pointer_op=0b11, writeback_source=0b010,
     )
 
     # FADD R4, R2, R3

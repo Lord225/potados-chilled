@@ -5,15 +5,19 @@
 `include "potados_common.sv"
 
 
+typedef struct packed {
+    logic        cin;
+    logic [15:0] operard_a;
+    logic [15:0] operard_b;
+    alu_op_t     alu_op;
+    cmp_op_t     cmp_op; 
+} alu_request_t;
+
 
 module potados_alu  (
-    input logic        clk,
-    input logic        reset,
-    input logic        cin,
-    input logic [15:0] operard_a,
-    input logic [15:0] operard_b,
-    input alu_op_t     alu_op,
-    input cmp_op_t     cmp_op,
+    input logic         clk,
+    input logic         reset,
+    input alu_request_t alu_request,
 
     output logic [15:0] alu_output,
     output cmp_result_t cmp_output,
@@ -22,6 +26,13 @@ module potados_alu  (
     logic [15:0] alu_output_next;
     cmp_result_t cmp_output_next;
     logic        out_ready_next;
+    
+    alu_op_t alu_op;
+    cmp_op_t cmp_op;
+    logic cin; 
+    logic [15:0] operard_a;
+    logic [15:0] operard_b;
+        
 
     function automatic cmp_result_t compare(
         input logic [15:0] operand_a,
@@ -70,6 +81,12 @@ module potados_alu  (
         alu_output_next = 0;
         cmp_output_next = CMP_RESULT_NONE;
         out_ready_next  = 0;
+
+        alu_op    = alu_request.alu_op;
+        cmp_op    = alu_request.cmp_op;
+        cin       = alu_request.cin;
+        operard_a = alu_request.operard_a;
+        operard_b = alu_request.operard_b;
     
         case(alu_op)
             ALU_NONE: begin

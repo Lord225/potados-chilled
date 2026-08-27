@@ -140,12 +140,18 @@ def _expected_output(
     if alu_op == ALU_MUL:
         return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SH:
-        amount = operand_b & 0xF
-        result = operand_a >> -amount if amount < 0 else operand_a << amount
+        shift = operand_b & 0x1F
+        if shift & 0x10:
+            result = operand_a >> ((-shift) & 0x1F)
+        else:
+            result = operand_a << shift
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_ASH:
-        amount = operand_b & 0xF
-        result = _signed16(operand_a) >> -amount if amount < 0 else operand_a << amount
+        shift = operand_b & 0x1F
+        if shift & 0x10:
+            result = _signed16(operand_a) >> ((-shift) & 0x1F)
+        else:
+            result = operand_a << shift
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SET:
         result = _compare(operand_a, operand_b, cmp_op)
@@ -209,11 +215,11 @@ async def multiply_and_shift_operations(dut: Dut) -> None:
     await _execute(dut, alu_op=ALU_SH, operand_a=1, operand_b=4)
     assert int(dut.alu_output.value) == 0x0010
 
-    # Bit 4 selects a logical right shift; the low four bits are its amount.
+    # Negative signed IMM5 values shift right; -1 shifts right by one bit.
     await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0x4000
 
-    # Bit 4 also selects direction for arithmetic shifts.
+    # Negative signed IMM5 values preserve the sign for arithmetic shifts.
     await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0xC000
 
