@@ -42,7 +42,7 @@ module potados_registers  (
             if (write_enable) begin
                 case (write_address)
                     3'b000: ;
-                    3'b001: ;
+                    3'b001: ; // SP is handled separately below
                     3'b010: regs.R2 <= write_data;
                     3'b011: regs.R3 <= write_data;
                     3'b100: regs.R4 <= write_data;

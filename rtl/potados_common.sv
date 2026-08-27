@@ -87,24 +87,52 @@ typedef struct packed {
     logic is_long;
 } decoded_instruction_t;
 
+
+typedef struct packed {
+    logic [15:0] pc;
+
+    logic [15:0] low_instruction;
+    logic [15:0] high_instruction;
+    logic low_valid;
+    logic high_valid;
+
+    decoded_instruction_t decoded_instruction;
+} fetch_decode_stage_t;
+
 typedef enum logic [1:0] {
+    // No data-memory operation is performed.
     MEMORY_NONE,
+    // Read RAM at the effective address produced by the ALU.
     MEMORY_LOAD,
+    // Write memory_write_data to RAM at the effective address produced by the ALU.
     MEMORY_STORE
 } memory_op_t;
 
 typedef enum logic [1:0] {
-    STACK_NONE,
-    STACK_PUSH,
-    STACK_POP
-} stack_op_t;
+    // The stack pointer is not modified.
+    STACK_POINTER_NONE,
+    // Increment SP after the memory operation (used by PUSH).
+    STACK_POINTER_INCREMENT,
+    // Decrement SP after the memory operation (used by POP).
+    STACK_POINTER_DECREMENT
+} stack_pointer_op_t;
 
 typedef enum logic [1:0] {
+    // No jump is performed
     JUMP_NONE,
+    // The jump is performed if the condition is met
     JUMP_CONDITIONAL,
+    // The jump will be performed
     JUMP_ALWAYS
 } jump_op_t;
 
+typedef enum logic [1:0] {
+    JUMP_SOURCE_NONE,
+    JUMP_SOURCE_SRC_A,
+    JUMP_SOURCE_SRC_B
+} jump_source_t;
+
+// What should be written into dst
 typedef enum logic [2:0] {
     // Nothing is source
     WB_NONE,
@@ -116,49 +144,79 @@ typedef enum logic [2:0] {
     WB_IMMEDIATE,
     // The FPU is the source
     WB_FPU,
-    // The PC is the source
+    // The address of the following instruction is the source (JAL/JALR).
     WB_RETURN_ADDRESS
 } writeback_source_t;
 
 
-typedef struct packed {
-    // Whenever the Instruction is decoded and valid
-    logic valid;
-    // Whenever the instruction is only half decoded
-    logic partialy_decoded;
-    // Whenever instruction has 16 bit immediate
-    logic is_long;
-    // The program counter value of the instruction
-    logic [15:0] pc;
-    // The final value for first (A) argument (taken from reg or imm)
-    logic [15:0] src_a_value;
-    // The final value for second (B) argument (taken from reg or imm)
-    logic [15:0] src_b_value;
-    // The final value of the SP register
-    logic [15:0] stack_pointer;
-    // The destination register for the instruction (if any), look at write back.
-    logic [2:0] dst;
-    
-    // Selected ALU operation for the instruction (if any)
-    alu_op_t alu_op;
-    // Selected CMP operation for the instruction (if any)
-    cmp_op_t cmp_op;
 
-    // Selected FPU operation for the instruction (if any)
+// A decoded instruction at the input of the execute stage.
+//
+// Decode/register-read prepares this packet, replacing register indices and
+// immediates with their final operand values.  Execute must use only this
+// packet: it drives the ALU, comparator, FPU, memory-address calculation,
+// stack update, control-flow decision, and register writeback.
+typedef struct packed {
+    // A complete instruction is present.  No side effect is permitted when 0.
+    logic valid;
+
+    // Address of the first instruction word
+    logic [15:0] pc;
+    // Address of the first word of the next sequential instruction.
+    logic [15:0] next_pc;
+
+    // Fully prepared execution operands.  Each may originate from a register,
+    // immediate, stack pointer, or other decode-time selection.
+    logic [15:0] operand_a_value;
+    logic [15:0] operand_b_value;
+    // Data presented to RAM during a memory store operation.
+    logic [15:0] memory_write_data;
+
+    // Register written during writeback when writeback_source is not WB_NONE.
+    logic [2:0] dst;
+
+    // Functional-unit operations.
+    alu_op_t alu_op;
+    cmp_op_t cmp_op;
     fpu_op_t fpu_op;
 
-    // Selected Memory operation for the instruction (if any)
+    // MEMORY_LOAD consumes the ALU result as an address and writes RAM data
+    // back later.  MEMORY_STORE writes memory_write_data at that address.
     memory_op_t memory_op;
-    // Selected Stack logic for the instruction (if any)
-    stack_op_t stack_op;
-    // Selected Jump logic for the instruction (if any)
+    // Stack-pointer update performed for this instruction.
+    stack_pointer_op_t stack_pointer_op;
+
+    // Selects whether a branch is taken and which prepared operand supplies
+    // its target address.
     jump_op_t jump_op;
-    // Selected Writeback source for the instruction (if any)
+    jump_source_t jump_source;
+    // Selects the value eventually written to dst, if any.
     writeback_source_t writeback_source;
 
-    // Whenever the cpu should halt
+    // Stops architectural execution after this instruction.
     logic halt;
 } execute_stage_t;
+
+// Values produced by execute and consumed by the data-memory stage.
+typedef struct packed {
+    logic valid;
+
+    logic [15:0] alu_result;
+    logic [15:0] memory_data;
+    logic [15:0] pc_next;
+    logic [2:0] dst;
+    writeback_source_t writeback_source;
+} memory_stage_t;
+
+typedef struct packed {
+    logic valid;
+
+    // Register receiving write_data when write_enable is set.
+    logic [2:0] dst;
+    // Final value written to dst.
+    logic [15:0] write_data;
+    writeback_source_t writeback_source;
+} writeback_stage_t;
 
 
 `endif

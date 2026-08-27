@@ -227,6 +227,15 @@ module potados(
     logic fetch_request_long_next;
     logic fetch_request_next_next;
 
+    execute_stage_t execute_stage;
+    execute_stage_t execute_stage_next;
+
+    memory_stage_t memory_stage;
+    memory_stage_t memory_stage_next;
+
+    writeback_stage_t writeback_stage;
+    writeback_stage_t writeback_stage_next;
+
     potados_program_memory program_memory_inst (
         .clk(clk),
         .reset(reset),
@@ -253,6 +262,50 @@ module potados(
         .decoded_instruction(decoded_instruction)
     );
 
+    potados_registers registers_inst (
+        .clk(clk),
+        .reset(reset),
+        .write_enable(1'b0),
+        .write_address(3'b0),
+        .write_data(16'b0),
+        .stack_pointer_write_data(16'b0),
+        .stack_pointer_write_enable(1'b0),
+        .stack_pointer_increment_enable(1'b0),
+        .stack_pointer_decrement_enable(1'b0),
+
+        .read_address_a(3'b0),
+        .read_address_b(3'b0),
+
+        .read_data_a(),
+        .read_data_b(),
+        .stack_pointer(),
+        .stack_pointer_decremented(),
+
+        .registers()
+    );
+
+    potados_alu potados_alu (
+        .clk       (clk),
+        .reset     (reset),
+        .cin       (cin),
+        .operard_a (operard_a),
+        .operard_b (operard_b),
+        .alu_op    (alu_op),
+        .cmp_op    (cmp_op),
+        .alu_output(alu_output),
+        .cmp_output(cmp_output),
+        .out_ready (out_ready)
+    );
+
+
+    potados_memory potados_memory (
+        .clk         (clk),
+        .address     (address),
+        .store_enable(store_enable),
+        .store_data  (store_data),
+        .load_enable (load_enable),
+        .load_data   (load_data)
+    );
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
