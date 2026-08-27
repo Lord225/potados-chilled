@@ -8,6 +8,7 @@ from typing import Any
 import cocotb
 import pytest
 from cocotb.triggers import Timer
+import cocotb_tools.runner as cocotb_runner
 from cocotb_tools.runner import get_runner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -151,6 +152,7 @@ async def execute_stage_prepares_memory_and_stack_operations(dut: Dut) -> None:
         stack_pointer_op=0b10,  # STACK_POINTER_INCREMENT
     )
     await _expect(
+        dut,
         expected_alu_result=0x0FFF,
         expected_memory_write_data=0xBEEF,
         expected_next_pc=0x0201,
@@ -175,6 +177,7 @@ async def execute_stage_resolves_conditional_and_unconditional_jumps(dut: Dut) -
         jump_op=0b01,  # JUMP_CONDITIONAL
     )
     await _expect(
+        dut,
         expected_alu_result=0xFFFE,
         expected_jump_enable=1,
         expected_jump_address=0xBEEF,
@@ -223,10 +226,13 @@ async def execute_stage_forwards_fpu_result_and_halt(dut: Dut) -> None:
 
 def _runner() -> Runner:
     sim = os.getenv("SIM", "verilator")
+    # The bundled Verilator occasionally races while generating its precompiled
+    # headers with parallel make jobs.  A one-job build is deterministic here.
+    cocotb_runner.MAX_PARALLEL_BUILD_JOBS = 1
     runner = get_runner(sim)
     shutil.rmtree(SIM_BUILD, ignore_errors=True)
     runner.build(
-        sources=[RTL_DIR / "potados.sv"],
+        sources=[RTL_DIR / "potados_execute.sv"],
         includes=[RTL_DIR],
         hdl_toplevel="potados_execute_stage",
         build_dir=SIM_BUILD,

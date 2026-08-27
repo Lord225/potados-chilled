@@ -52,6 +52,9 @@ typedef struct packed {
     logic [15:0] R5;
     logic [15:0] R6;
     logic [15:0] R7;
+
+    // logic SP_PENDING_WRITE;
+    // logic R2_PENDING_WRITE;
 } register_file_t;
 
 
@@ -233,10 +236,16 @@ typedef struct packed {
 typedef struct packed {
     logic valid;
 
-    // Register receiving write_data when write_enable is set.
+    // from memory stage
+    logic [15:0] alu_result;
+    logic [15:0] memory_write_data;
+    logic [15:0] fpu_result;
+    logic [15:0] next_pc;
+
     logic [2:0] dst;
-    // Final value written to dst.
-    logic [15:0] write_data;
+    
+    stack_pointer_op_t stack_pointer_op;
+
     writeback_source_t writeback_source;
 } writeback_stage_t;
 
