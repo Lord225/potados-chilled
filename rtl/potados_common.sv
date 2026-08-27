@@ -87,18 +87,6 @@ typedef struct packed {
     logic is_long;
 } decoded_instruction_t;
 
-
-typedef struct packed {
-    logic [15:0] pc;
-
-    logic [15:0] low_instruction;
-    logic [15:0] high_instruction;
-    logic low_valid;
-    logic high_valid;
-
-    decoded_instruction_t decoded_instruction;
-} fetch_decode_stage_t;
-
 typedef enum logic [1:0] {
     // No data-memory operation is performed.
     MEMORY_NONE,
