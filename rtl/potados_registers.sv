@@ -46,14 +46,14 @@ module potados_registers  (
 
             // Explicit SP writes take priority over automatic stack updates.
             // Increment and decrement enables are mutually exclusive.
-            if (stack_pointer_request.write_enable) begin
+            if (write_request.write_enable && write_request.write_address == 3'b001) begin
+                regs.SP <= stack_pointer_request.write_data;
+            end else if (stack_pointer_request.operation == STACK_POINTER_WRITE) begin
                 regs.SP <= stack_pointer_request.write_data;
             end else if (stack_pointer_request.operation == STACK_POINTER_INCREMENT) begin
                 regs.SP <= regs.SP + 16'h0001;
             end else if (stack_pointer_request.operation == STACK_POINTER_DECREMENT) begin
                 regs.SP <= regs.SP - 16'h0001;
-            end else if (write_request.write_enable && write_request.write_address == 3'b001) begin
-                regs.SP <= write_request.write_data;
             end
         end
     end
@@ -70,7 +70,7 @@ module potados_registers  (
             3'b111: read_response.data_a = regs.R7;
             default: read_response.data_a = 16'h0000;
         endcase
-
+    
         case (read_request.address_b)
             3'b000: read_response.data_b = 16'h0000;
             3'b001: read_response.data_b = regs.SP;

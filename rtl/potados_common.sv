@@ -46,13 +46,12 @@ typedef enum logic[3:0] {
 
 typedef struct packed {
     logic [15:0] SP;
-    logic [15:0] R1;
     logic [15:0] R2;
     logic [15:0] R3;
     logic [15:0] R4;
     logic [15:0] R5;
     logic [15:0] R6;
-    logic [15:0] R7;    
+    logic [15:0] R7;
 } register_file_t;
 
 
@@ -99,6 +98,8 @@ typedef enum logic [1:0] {
 typedef enum logic [1:0] {
     // The stack pointer is not modified.
     STACK_POINTER_NONE,
+    // The stack pointer is explicitly written to a new value.
+    STACK_POINTER_WRITE,
     // Increment SP after the memory operation (used by PUSH).
     STACK_POINTER_INCREMENT,
     // Decrement SP after the memory operation (used by POP).
@@ -129,7 +130,6 @@ typedef struct packed {
 // An explicit stack-pointer write or an automatic stack-pointer update.
 typedef struct packed {
     logic [15:0] write_data;
-    logic        write_enable;
     stack_pointer_op_t operation;
 } stack_pointer_request_t;
 

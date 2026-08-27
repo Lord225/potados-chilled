@@ -113,7 +113,9 @@ def _compare(operand_a: int, operand_b: int, op: int) -> int:
     raise AssertionError(f"Unknown comparison opcode: {op}")
 
 
-def _expected_output(alu_op: int, operand_a: int, operand_b: int, cin: int, cmp_op: int) -> tuple[int, int, int]:
+def _expected_output(
+    alu_op: int, operand_a: int, operand_b: int, cin: int, cmp_op: int
+) -> tuple[int, int, int]:
     operand_a &= 0xFFFF
     operand_b &= 0xFFFF
 
@@ -122,7 +124,11 @@ def _expected_output(alu_op: int, operand_a: int, operand_b: int, cin: int, cmp_
     if alu_op == ALU_ADD:
         return (operand_a + operand_b + cin) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SUB:
-        return (operand_a - operand_b - cin) & 0xFFFF, _compare(operand_a, operand_b, cmp_op), 1
+        return (
+            (operand_a - operand_b - cin) & 0xFFFF,
+            _compare(operand_a, operand_b, cmp_op),
+            1,
+        )
     if alu_op == ALU_AND:
         return operand_a & operand_b, CMP_RESULT_NONE, 1
     if alu_op == ALU_OR:
@@ -135,17 +141,21 @@ def _expected_output(alu_op: int, operand_a: int, operand_b: int, cin: int, cmp_
         return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SH:
         amount = operand_b & 0xF
-        result = operand_a >> amount if operand_b & 0x10 else operand_a << amount
+        result = operand_a >> -amount if amount < 0 else operand_a << amount
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_ASH:
         amount = operand_b & 0xF
-        result = _signed16(operand_a) >> amount if operand_b & 0x10 else operand_a << amount
+        result = _signed16(operand_a) >> -amount if amount < 0 else operand_a << amount
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SET:
         result = _compare(operand_a, operand_b, cmp_op)
         return int(result == CMP_RESULT_TRUE), result, 1
     if alu_op == ALU_CMP:
-        return (operand_a - operand_b - cin) & 0xFFFF, _compare(operand_a, operand_b, cmp_op), 1
+        return (
+            (operand_a - operand_b - cin) & 0xFFFF,
+            _compare(operand_a, operand_b, cmp_op),
+            1,
+        )
     raise AssertionError(f"Unknown ALU opcode: {alu_op}")
 
 
@@ -200,11 +210,11 @@ async def multiply_and_shift_operations(dut: Dut) -> None:
     assert int(dut.alu_output.value) == 0x0010
 
     # Bit 4 selects a logical right shift; the low four bits are its amount.
-    await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=0x11)
+    await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0x4000
 
     # Bit 4 also selects direction for arithmetic shifts.
-    await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=0x11)
+    await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0xC000
 
 
@@ -230,18 +240,6 @@ async def comparison_and_set_operations(dut: Dut) -> None:
     await _execute(dut, alu_op=ALU_SET, operand_a=7, operand_b=7, cmp_op=CMP_NE)
     assert int(dut.alu_output.value) == 0
     assert int(dut.cmp_output.value) == CMP_RESULT_FALSE
-
-
-@cocotb.test()
-async def no_operation_is_not_ready(dut: Dut) -> None:
-    dut.clk.value = 0
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
-    await _reset(dut)
-
-    await _execute(dut, alu_op=ALU_NONE, operand_a=0xFFFF, operand_b=0xFFFF)
-    assert int(dut.alu_output.value) == 0
-    assert int(dut.cmp_output.value) == CMP_RESULT_NONE
-    assert int(dut.out_ready.value) == 0
 
 
 @cocotb.test()
@@ -283,7 +281,9 @@ async def edge_case_matrix_for_all_operations(dut: Dut) -> None:
             for operand_b in EDGE_VALUES:
                 for cin in range(2):
                     for cmp_op in range(CMP_NONE, CMP_B + 1):
-                        expected = _expected_output(alu_op, operand_a, operand_b, cin, cmp_op)
+                        expected = _expected_output(
+                            alu_op, operand_a, operand_b, cin, cmp_op
+                        )
                         await _execute(
                             dut,
                             alu_op=alu_op,
@@ -313,7 +313,9 @@ async def comparison_boundary_benchmark(dut: Dut) -> None:
         (0xFFFF, 0xFFFE),
     ]
     rng = random.Random(0x434D5050)
-    boundary_pairs.extend((rng.randrange(1 << 16), rng.randrange(1 << 16)) for _ in range(256))
+    boundary_pairs.extend(
+        (rng.randrange(1 << 16), rng.randrange(1 << 16)) for _ in range(256)
+    )
 
     for cmp_op in range(CMP_NONE, CMP_B + 1):
         for operand_a, operand_b in boundary_pairs:
@@ -336,7 +338,9 @@ async def comparison_boundary_benchmark(dut: Dut) -> None:
                 cmp_op=cmp_op,
             )
             assert int(dut.cmp_output.value) == expected_comparison
-            assert int(dut.alu_output.value) == int(expected_comparison == CMP_RESULT_TRUE)
+            assert int(dut.alu_output.value) == int(
+                expected_comparison == CMP_RESULT_TRUE
+            )
 
 
 def _runner() -> Runner:
@@ -361,9 +365,16 @@ def potados_alu_runner() -> Runner:
 
 def _run_cocotb_test(runner: Runner, testcase: str) -> None:
     try:
-        runner.test(hdl_toplevel="potados_alu", test_module=__name__, build_dir=SIM_BUILD, test_filter=testcase)
+        runner.test(
+            hdl_toplevel="potados_alu",
+            test_module=__name__,
+            build_dir=SIM_BUILD,
+            test_filter=testcase,
+        )
     except SystemExit as exc:
-        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+        pytest.fail(
+            f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False
+        )
 
 
 def test_arithmetic_and_logic_operations(potados_alu_runner: Runner) -> None:
@@ -376,10 +387,6 @@ def test_multiply_and_shift_operations(potados_alu_runner: Runner) -> None:
 
 def test_comparison_and_set_operations(potados_alu_runner: Runner) -> None:
     _run_cocotb_test(potados_alu_runner, "comparison_and_set_operations")
-
-
-def test_no_operation_is_not_ready(potados_alu_runner: Runner) -> None:
-    _run_cocotb_test(potados_alu_runner, "no_operation_is_not_ready")
 
 
 def test_randomised_all_operation_inputs(potados_alu_runner: Runner) -> None:

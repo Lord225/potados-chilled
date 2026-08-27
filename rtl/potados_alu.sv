@@ -45,7 +45,7 @@ module potados_alu  (
         input logic [4:0] shift
     );
         if (shift[4]) begin
-            logic_shift = value >> shift[3:0];
+            logic_shift = value >> (-shift[4:0]);
         end else begin
             logic_shift = value << shift[3:0];
         end
@@ -56,23 +56,15 @@ module potados_alu  (
         input logic [4:0] shift
     );
         if (shift[4]) begin
-            arithmetic_shift = $signed(value) >>> shift[3:0];
+            arithmetic_shift = $unsigned($signed(value) >>> (-shift[4:0]));
         end else begin
             arithmetic_shift = value << shift[3:0];
         end
     endfunction
 
-    always_ff @(posedge clk, posedge reset) begin
-        if (reset) begin
-            alu_output <= '0;
-            cmp_output <= CMP_RESULT_NONE;
-            out_ready  <= 1'b0;
-        end else begin
-            alu_output <= alu_output_next;
-            cmp_output <= cmp_output_next;
-            out_ready  <= out_ready_next;
-        end
-    end
+    assign alu_output = alu_output_next;
+    assign cmp_output = cmp_output_next;
+    assign out_ready  = out_ready_next;
 
     always_comb begin
         alu_output_next = 0;

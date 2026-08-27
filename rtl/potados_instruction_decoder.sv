@@ -94,15 +94,6 @@ module potados_instruction_decoder(
         };
     endfunction
 
-    function automatic logic[15:0] se_8_bit_immediate(
-        input logic [7:0] immediate
-    );
-        se_8_bit_immediate = {
-            {8{immediate[7]}},
-            immediate[7:0]
-        };
-    endfunction
-
     // This function is supposed to decode the instruction and return a decoded_instruction_t struct. 
     // It takes instruction in two forms: low and high, and a flag indicating if the high part is valid.
     function automatic decoded_instruction_t decode_instruction(
@@ -452,7 +443,6 @@ module instruction_decoder_stage_testbech_helper(
     input logic        register_write_enable,
     input logic [2:0]  register_write_address,
     input logic [15:0] register_write_data,
-    input logic        stack_pointer_write_enable,
     input logic [15:0] stack_pointer_write_data,
     input stack_pointer_op_t stack_pointer_operation,
 
@@ -469,7 +459,6 @@ module instruction_decoder_stage_testbech_helper(
         register_write_request.write_address = register_write_address;
         register_write_request.write_data = register_write_data;
 
-        stack_pointer_request.write_enable = stack_pointer_write_enable;
         stack_pointer_request.write_data = stack_pointer_write_data;
         stack_pointer_request.operation = stack_pointer_operation;
     end
