@@ -3,205 +3,10 @@
 
 `timescale 1ns / 1ps
 `include "potados_common.sv"
-
-
-module potados_instruction_decoder(
-    input logic [15:0] instruction_low,
-    input logic [15:0] instruction_high,
-    input logic        high_valid,
-    output decoded_instruction_t decoded_instruction
-);
-    function automatic op_primary_t extract_op_primary(
-        input logic [15:0] instruction
-    );
-        extract_op_primary = op_primary_t'(instruction[15:12]);
-    endfunction
-
-    function automatic logic[2:0] extract_dst(
-        input logic [15:0] instruction
-    );
-        extract_dst = instruction[11:9];
-    endfunction
-
-    function automatic logic[2:0] extract_op_secondary(
-        input logic [15:0] instruction
-    );
-        extract_op_secondary = instruction[8:6];
-    endfunction
-
-    function automatic logic[2:0] extract_src_a(
-        input logic [15:0] instruction
-    );
-        extract_src_a = instruction[5:3];
-    endfunction
-
-    function automatic logic[2:0] extract_src_b(
-        input logic [15:0] instruction
-    );
-        extract_src_b = instruction[2:0];
-    endfunction
-
-    function automatic logic[2:0] extract_sdp(
-        input logic [15:0] instruction
-    );
-        extract_sdp = instruction[2:0];
-    endfunction
-
-    function automatic logic[5:0] extract_immediate_6(
-        input logic [15:0] instruction
-    );
-        extract_immediate_6 = {
-            instruction[11],
-            instruction[10],
-            instruction[9],
-            instruction[8],
-            instruction[7],
-            instruction[6]
-        };
-    endfunction
-
-    function automatic logic[15:0] se_6_bit_immediate(
-        input logic [5:0] immediate
-    );
-        se_6_bit_immediate = {
-            {10{immediate[5]}},
-            immediate[5:0]
-        };
-    endfunction
-    
-    function automatic logic[8:0] extract_immediate_9(
-        input logic [15:0] instruction
-    );
-        extract_immediate_9 = {
-            instruction[5],
-            instruction[4],
-            instruction[3],
-            instruction[11],
-            instruction[10],
-            instruction[9],
-            instruction[8],
-            instruction[7],
-            instruction[6]
-        };
-    endfunction
-
-    function automatic logic[15:0] se_9_bit_immediate(
-        input logic [8:0] immediate
-    );
-        se_9_bit_immediate = {
-            {7{immediate[8]}},
-            immediate[8:0]
-        };
-    endfunction
-
-    function automatic logic[15:0] se_8_bit_immediate(
-        input logic [7:0] immediate
-    );
-        se_8_bit_immediate = {
-            {8{immediate[7]}},
-            immediate[7:0]
-        };
-    endfunction
-
-    // This function is supposed to decode the instruction and return a decoded_instruction_t struct. 
-    // It takes instruction in two forms: low and high, and a flag indicating if the high part is valid.
-    function automatic decoded_instruction_t decode_instruction(
-        input logic [15:0] instruction_low,
-        input logic [15:0] instruction_high,
-        input logic        high_valid
-    );
-        decoded_instruction_t decoded;
-    
-        decoded.op_primary = extract_op_primary(instruction_low);
-        decoded.op_secondary = extract_op_secondary(instruction_low);
-        decoded.src_a = extract_src_a(instruction_low);
-        decoded.src_b = extract_src_b(instruction_low);
-        
-        decoded.dst = 3'b0;
-        decoded.immediate = 16'b0;
-        decoded.partialy_decoded = 16'b0;
-        decoded.is_long = 1'b0;
-        
-        case(decoded.op_primary)
-            OP_ALU: begin
-                decoded.dst = extract_dst(instruction_low);
-            end
-            OP_SET: begin
-                decoded.dst = extract_dst(instruction_low);
-            end
-            OP_SH: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
-            end
-            OP_ASH: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
-            end
-            OP_ADDI: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_9_bit_immediate(extract_immediate_9(instruction_low));
-            end
-            OP_LDIMM: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_9_bit_immediate(extract_immediate_9(instruction_low));
-            end
-            OP_LD: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
-            end
-            OP_ST: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
-            end
-            OP_LDSP: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_9_bit_immediate(extract_immediate_9(instruction_low));
-            end
-            OP_STSP: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_9_bit_immediate(extract_immediate_9(instruction_low));
-            end
-            OP_CJUMP: begin
-                decoded.immediate = instruction_high;
-                decoded.is_long = 1'b1;
-                if(high_valid) begin
-                    decoded.partialy_decoded = 1'b0;
-                end else begin
-                    decoded.partialy_decoded = 1'b1;
-                end
-            end
-            OP_JUMP: begin
-                decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = instruction_high;
-                decoded.is_long = 1'b1;
-                if(high_valid) begin
-                    decoded.partialy_decoded = 1'b0;
-                end else begin
-                    decoded.partialy_decoded = 1'b1;
-                end
-            end
-            OP_STACK: begin
-                decoded.dst = extract_sdp(instruction_low);
-            end
-            OP_JUMP_REG: begin
-                decoded.dst = extract_sdp(instruction_low);
-            end
-            OP_FPU: begin
-                decoded.dst = extract_dst(instruction_low);
-            end
-            OP_HALT: begin
-                decoded.immediate = instruction_low;
-            end
-            default: begin
-            end
-        endcase
-        return decoded;
-    endfunction
-
-    always_comb begin
-        decoded_instruction = decode_instruction(instruction_low, instruction_high, high_valid);
-    end
-endmodule
+`include "potados_instruction_decoder.sv"
+`include "potados_registers.sv"
+`include "potados_alu.sv"
+`include "potados_memory.sv"
 
 module potados(
     input logic clk,
@@ -210,11 +15,14 @@ module potados(
     output logic [15:0] high_instruction_out,
     output logic instruction_is_long,
     output logic instruction_ready,
-    output decoded_instruction_t decoded_instruction_out
+    output decoded_instruction_t decoded_instruction_out,
+    output register_file_t registers_out
 );
     // Fetched instruction words and their validity flags.
     logic [15:0] fetched_instruction_low;
     logic [15:0] fetched_instruction_high;
+    logic [15:0] fetched_instruction_pc;
+    logic [15:0] fetched_instruction_next_pc;
     logic        fetched_instruction_valid;
     logic        fetched_high_valid;
 
@@ -222,10 +30,13 @@ module potados(
     decoded_instruction_t decoded_instruction;
 
     // Requests sent to the instruction-fetch unit.
-    logic fetch_request_long;
-    logic fetch_request_next;
-    logic fetch_request_long_next;
-    logic fetch_request_next_next;
+    logic fetch_low_word_request;
+    logic fetch_low_word_request_next;
+
+    logic fetch_high_word_request;
+    logic fetch_high_word_request_next;
+
+    register_file_t registers;
 
     execute_stage_t execute_stage;
     execute_stage_t execute_stage_next;
@@ -236,18 +47,30 @@ module potados(
     writeback_stage_t writeback_stage;
     writeback_stage_t writeback_stage_next;
 
+    // Register-file interfaces shared by decode and writeback.
+
+    // Request that sets the register read addresses for the current instruction.
+    register_read_request_t register_read_request;
+    // Response that provides the register read data for the current instruction.
+    register_read_response_t register_read_response;
+    // Request that sets the register write address and data for the current instruction.
+    register_write_request_t register_write_request;
+    // Request that sets the stack pointer update logic for the current instruction.
+    stack_pointer_request_t stack_pointer_request;
+
     potados_program_memory program_memory_inst (
         .clk(clk),
         .reset(reset),
         
-        .request_long_instruction(fetch_request_long),
-        .request_next_instruction(fetch_request_next),
+        .request_long_instruction(fetch_high_word_request),
+        .request_next_instruction(fetch_low_word_request),
         
         .jump_address(16'b0),
         .jump_enable(1'b0),
         
         .low_instruction(fetched_instruction_low),
         .high_instruction(fetched_instruction_high),
+        .instruction_pc(fetched_instruction_pc),
 
         .high_valid(fetched_high_valid),
 
@@ -262,27 +85,35 @@ module potados(
         .decoded_instruction(decoded_instruction)
     );
 
+    assign fetched_instruction_next_pc = fetched_instruction_pc + (decoded_instruction.is_long ? 16'd2 : 16'd1);
+
+    potados_decode_stage decode_stage_inst (
+        .instruction_valid(fetched_instruction_valid),
+        .instruction_pc(fetched_instruction_pc),
+        .instruction_next_pc(fetched_instruction_next_pc),
+        .decoded_instruction(decoded_instruction),
+
+        .register_read_request(register_read_request),
+        .register_read_response(register_read_response),
+
+        .execute_stage(execute_stage_next)
+    );
+
     potados_registers registers_inst (
         .clk(clk),
         .reset(reset),
-        .write_enable(1'b0),
-        .write_address(3'b0),
-        .write_data(16'b0),
-        .stack_pointer_write_data(16'b0),
-        .stack_pointer_write_enable(1'b0),
-        .stack_pointer_increment_enable(1'b0),
-        .stack_pointer_decrement_enable(1'b0),
+        .read_request(register_read_request),
+        .read_response(register_read_response),
+        .write_request(register_write_request),
+        .stack_pointer_request(stack_pointer_request),
 
-        .read_address_a(3'b0),
-        .read_address_b(3'b0),
-
-        .read_data_a(),
-        .read_data_b(),
-        .stack_pointer(),
-        .stack_pointer_decremented(),
-
-        .registers()
+        .registers(registers)
     );
+
+    // Writeback and stack-pointer commit wiring will replace these defaults
+    // when the memory and writeback stages are connected.
+    assign register_write_request = '0;
+    assign stack_pointer_request = '0;
 
     potados_alu potados_alu (
         .clk       (clk),
@@ -290,8 +121,8 @@ module potados(
         .cin       (cin),
         .operard_a (operard_a),
         .operard_b (operard_b),
-        .alu_op    (alu_op),
-        .cmp_op    (cmp_op),
+        .alu_op    (),
+        .cmp_op    (),
         .alu_output(alu_output),
         .cmp_output(cmp_output),
         .out_ready (out_ready)
@@ -309,23 +140,27 @@ module potados(
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
-            fetch_request_long <= 1'b0;
-            fetch_request_next <= 1'b1;
+            fetch_low_word_request <= 1'b1;
+            fetch_high_word_request <= 1'b0;
+            execute_stage <= '0;
+            memory_stage <= '0;
+            writeback_stage <= '0;
         end else begin
-            fetch_request_long <= fetch_request_long_next;
-            fetch_request_next <= fetch_request_next_next;
+            fetch_low_word_request <= fetch_low_word_request_next;
+            fetch_high_word_request <= fetch_high_word_request_next;
+            execute_stage <= execute_stage_next;
         end
     end
 
     always_comb begin
-        fetch_request_long_next = 1'b0;
-        fetch_request_next_next = 1'b0;
+        fetch_high_word_request_next = 1'b0;
+        fetch_low_word_request_next = 1'b0;
 
         if (fetched_instruction_valid) begin
             if (decoded_instruction.is_long && decoded_instruction.partialy_decoded) begin
-                fetch_request_long_next = 1'b1;
+                fetch_high_word_request_next = 1'b1;
             end else begin
-                fetch_request_next_next = 1'b1;
+                fetch_low_word_request_next = 1'b1;
             end
         end
     end
@@ -341,7 +176,7 @@ module potados(
     assign low_instruction_out = fetched_instruction_low;
     assign high_instruction_out = fetched_instruction_high;
     assign decoded_instruction_out = decoded_instruction;
-
+    assign registers_out = registers;
 endmodule
 
 `endif

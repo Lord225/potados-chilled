@@ -105,6 +105,34 @@ typedef enum logic [1:0] {
     STACK_POINTER_DECREMENT
 } stack_pointer_op_t;
 
+// Addresses requested from the two combinational register-file read ports.
+typedef struct packed {
+    logic [2:0] address_a;
+    logic [2:0] address_b;
+} register_read_request_t;
+
+// Values returned by the register-file read ports and stack-pointer helpers.
+typedef struct packed {
+    logic [15:0] data_a;
+    logic [15:0] data_b;
+    logic [15:0] stack_pointer;
+    logic [15:0] stack_pointer_decremented;
+} register_read_response_t;
+
+// A register-file write committed by the writeback stage.
+typedef struct packed {
+    logic        write_enable;
+    logic [2:0]  write_address;
+    logic [15:0] write_data;
+} register_write_request_t;
+
+// An explicit stack-pointer write or an automatic stack-pointer update.
+typedef struct packed {
+    logic [15:0] write_data;
+    logic        write_enable;
+    stack_pointer_op_t operation;
+} stack_pointer_request_t;
+
 typedef enum logic [1:0] {
     // No jump is performed
     JUMP_NONE,
@@ -114,12 +142,6 @@ typedef enum logic [1:0] {
     JUMP_ALWAYS
 } jump_op_t;
 
-typedef enum logic [1:0] {
-    JUMP_SOURCE_NONE,
-    JUMP_SOURCE_SRC_A,
-    JUMP_SOURCE_SRC_B
-} jump_source_t;
-
 // What should be written into dst
 typedef enum logic [2:0] {
     // Nothing is source
@@ -128,8 +150,6 @@ typedef enum logic [2:0] {
     WB_ALU,
     // The RAM is the source
     WB_MEMORY,
-    // The IMM is the source
-    WB_IMMEDIATE,
     // The FPU is the source
     WB_FPU,
     // The address of the following instruction is the source (JAL/JALR).
@@ -159,6 +179,8 @@ typedef struct packed {
     logic [15:0] operand_b_value;
     // Data presented to RAM during a memory store operation.
     logic [15:0] memory_write_data;
+    // Address selected for a control-flow transfer.
+    logic [15:0] jump_target;
 
     // Register written during writeback when writeback_source is not WB_NONE.
     logic [2:0] dst;
@@ -174,10 +196,9 @@ typedef struct packed {
     // Stack-pointer update performed for this instruction.
     stack_pointer_op_t stack_pointer_op;
 
-    // Selects whether a branch is taken and which prepared operand supplies
-    // its target address.
+    // Selects whether a branch is taken and which prepared value supplies its
+    // target address.
     jump_op_t jump_op;
-    jump_source_t jump_source;
     // Selects the value eventually written to dst, if any.
     writeback_source_t writeback_source;
 

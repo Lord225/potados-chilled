@@ -130,7 +130,7 @@ def _expected_output(alu_op: int, operand_a: int, operand_b: int, cin: int, cmp_
     if alu_op == ALU_XOR:
         return operand_a ^ operand_b, CMP_RESULT_NONE, 1
     if alu_op == ALU_NOT:
-        return (~operand_a) & 0xFFFF, CMP_RESULT_NONE, 1
+        return (~operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_MUL:
         return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SH:
@@ -182,7 +182,7 @@ async def arithmetic_and_logic_operations(dut: Dut) -> None:
     await _execute(dut, alu_op=ALU_XOR, operand_a=0xA5A5, operand_b=0x3C3C)
     assert int(dut.alu_output.value) == 0x9999
 
-    await _execute(dut, alu_op=ALU_NOT, operand_a=0x00F0)
+    await _execute(dut, alu_op=ALU_NOT, operand_a=0x0000, operand_b=0x00F0)
     assert int(dut.alu_output.value) == 0xFF0F
 
 

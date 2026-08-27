@@ -111,7 +111,7 @@ module potados_alu  (
                 out_ready_next  = 1'b1;
             end
             ALU_NOT: begin
-                alu_output_next = ~operard_a;
+                alu_output_next = ~operard_b;
                 cmp_output_next = CMP_RESULT_NONE;
                 out_ready_next  = 1'b1;
             end

@@ -75,6 +75,7 @@ module potados_program_memory (
 
     output logic[15:0] low_instruction,
     output logic[15:0] high_instruction,
+    output logic[15:0] instruction_pc,
     output logic       low_valid,
     output logic       high_valid
 );
@@ -106,6 +107,7 @@ module potados_program_memory (
         rom_data_prev_next = rom_data_prev;
         low_instruction = 16'h0000;
         high_instruction = 16'h0000;
+        instruction_pc = 16'h0000;
         low_valid = 1'b0;
         high_valid = 1'b0;
 
@@ -127,6 +129,7 @@ module potados_program_memory (
                 end
                 FETCH_SHORT_RESPONSE: begin
                     low_instruction = rom_data;
+                    instruction_pc = pc - 16'h0001;
                     low_valid = 1'b1;
                     // Retain this word in case the decoder requests its high
                     // word on the following fetch command.
@@ -136,6 +139,7 @@ module potados_program_memory (
                 FETCH_LONG_RESPONSE: begin
                     low_instruction = rom_data_prev;
                     high_instruction = rom_data;
+                    instruction_pc = pc - 16'h0002;
                     low_valid = 1'b1;
                     high_valid = 1'b1;
                     fetch_state_next = FETCH_IDLE;
