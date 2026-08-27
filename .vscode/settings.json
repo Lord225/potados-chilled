@@ -1,0 +1,29 @@
+{
+  "files.associations": {
+    "*.sv": "systemverilog",
+    "*.svh": "systemverilog",
+    "*.v": "verilog",
+    "*.cst": "plaintext"
+  },
+  "cSpell.enabled": false,
+  "terminal.integrated.profiles.linux": {
+    "zsh": {
+      "path": "/bin/zsh",
+      "args": ["-l", "-c", "source /home/lord225/oss-cad-suite/environment && exec /bin/zsh -i"]
+    },
+    "bash": {
+      "path": "/bin/bash",
+      "args": ["-l", "-c", "source /home/lord225/oss-cad-suite/environment && exec /bin/bash -i"]
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "editor.formatOnSave": true,
+  "verilog.formatting.veribleVerilogFormatter.path": "/opt/homebrew/bin/verible-verilog-format",
+  "verilog.formatting.veribleVerilogFormatter.arguments": "--indentation_spaces=4",
+  "python.testing.pytestArgs": ["-ra", "-q"],
+  "python.testing.pytestPath": "uv run pytest",
+  "python.testing.autoTestDiscoverOnSaveEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.languageServer": "None"
+}
