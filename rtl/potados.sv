@@ -170,6 +170,10 @@ module potados(
     // 3) ???
     // Ok this is global problem, same thing with memory and Execute state:
     // We must stall pipeline when someone tries to read from register that was not written by previous stage yet. So we need to add some kind of "ready" flag to writeback stage and check it in decode stage.
+    // First possible solution:
+    // Add SP_WRITE_PENDING, R2_WRITE_PENDING, R3_WRITE_PENDING, R4_WRITE_PENDING, R5_WRITE_PENDING, R6_WRITE_PENDING, R7_WRITE_PENDING flags to register_file_t and set them in writeback stage when writeback_stage.valid is 1 and writeback_stage.dst is SP, R2, R3, R4, R5, R6 or R7. Then in decode stage check if any of these flags is set for the registers that are being read and if so stall the pipeline.
+    // Track these flags in pipeline, if stage is blocked, block this stage and allow later stages to continue until they reach resolve the pending write
+    // Then with write resolved and value written to register, clear the pending write flag and allow pipeline to continue.    
     potados_execute_stage execute_stage_inst (
         .clk(clk),
         .reset(reset),
