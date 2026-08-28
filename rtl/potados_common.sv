@@ -43,6 +43,13 @@ typedef enum logic[3:0] {
     FPU_UTOF
 } fpu_op_t;
 
+typedef enum logic[2:0] {
+    PIPELINE_STALL_NONE,
+    PIPELINE_STALL_EXECUTE,
+    PIPELINE_STALL_MEMORY,
+    PIPELINE_STALL_WRITEBACK // Should not be possible, but included for completeness.
+} pipeline_stall_t;
+
 
 typedef struct packed {
     logic [15:0] SP;
@@ -52,10 +59,13 @@ typedef struct packed {
     logic [15:0] R5;
     logic [15:0] R6;
     logic [15:0] R7;
-
-    // logic SP_PENDING_WRITE;
-    // logic R2_PENDING_WRITE;
 } register_file_t;
+
+typedef struct packed {
+    // One bit for each architectural register with a future writeback.
+    // ZERO (bit 0) is always clear.
+    logic [7:0] pending_write;
+} register_status_t;
 
 
 typedef enum logic[3:0] {

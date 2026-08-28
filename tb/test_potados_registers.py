@@ -51,6 +51,11 @@ def _decremented_stack_pointer(dut: Dut) -> int:
     return int(dut.read_response.value) & 0xFFFF
 
 
+def _write_request(*, enable: int, address: int, data: int = 0) -> int:
+    # register_write_request_t = {write_enable, write_address[2:0], write_data[15:0]}.
+    return ((enable & 1) << 19) | ((address & 0b111) << 16) | (data & 0xFFFF)
+
+
 @cocotb.test()
 async def push_reads_current_sp_then_increments_on_clock(dut: Dut) -> None:
     dut.clk.value = 0

@@ -203,8 +203,10 @@ module potados_decode_stage(
 
     output register_read_request_t  register_read_request,
     input register_read_response_t  register_read_response,
+    input register_status_t         register_status,
 
-    output execute_stage_t execute_stage
+    output execute_stage_t execute_stage,
+    output logic should_stall
 );
     function automatic alu_op_t decode_alu_operation(
         input logic [2:0] operation
@@ -257,6 +259,7 @@ module potados_decode_stage(
 
         // zero is default state for execute
         execute_stage = '0;
+        should_stall = 1'b0;
 
         if (instruction_valid && decoded_instruction.partialy_decoded=='0) begin
             execute_stage.valid = 1'b1;
@@ -270,24 +273,32 @@ module potados_decode_stage(
                 OP_ALU: begin
                     execute_stage.alu_op = decode_alu_operation(decoded_instruction.op_secondary);
                     execute_stage.writeback_source = WB_ALU;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_SET: begin
                     execute_stage.cmp_op = decode_compare_operation(decoded_instruction.op_secondary);
                     execute_stage.alu_op = ALU_SET;
                     execute_stage.writeback_source = WB_ALU;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_SH: begin
                     execute_stage.alu_op = ALU_SH;
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.writeback_source = WB_ALU;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a];
                 end
 
                 OP_ASH: begin
                     execute_stage.alu_op = ALU_ASH;
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.writeback_source = WB_ALU;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a];
                 end
 
                 OP_ADDI: begin
@@ -295,6 +306,8 @@ module potados_decode_stage(
                     execute_stage.operand_a_value = register_read_response.data_b;
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.writeback_source = WB_ALU;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_LDIMM: begin
@@ -316,6 +329,8 @@ module potados_decode_stage(
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.memory_op = MEMORY_LOAD;
                     execute_stage.writeback_source = WB_MEMORY;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a];
                 end
 
                 OP_ST: begin
@@ -323,6 +338,8 @@ module potados_decode_stage(
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.memory_write_data = register_read_response.data_b;
                     execute_stage.memory_op = MEMORY_STORE;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_LDSP: begin
@@ -331,6 +348,8 @@ module potados_decode_stage(
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.memory_op = MEMORY_LOAD;
                     execute_stage.writeback_source = WB_MEMORY;
+
+                    should_stall = register_status.pending_write[3'b001];
                 end
 
                 OP_STSP: begin
@@ -339,6 +358,8 @@ module potados_decode_stage(
                     execute_stage.operand_b_value = decoded_instruction.immediate;
                     execute_stage.memory_write_data = register_read_response.data_b;
                     execute_stage.memory_op = MEMORY_STORE;
+
+                    should_stall = register_status.pending_write[3'b001] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_CJUMP: begin
@@ -346,6 +367,8 @@ module potados_decode_stage(
                     execute_stage.cmp_op = decode_compare_operation(decoded_instruction.op_secondary);
                     execute_stage.jump_op = JUMP_CONDITIONAL;
                     execute_stage.jump_target = decoded_instruction.immediate;
+
+                    should_stall = register_status.pending_write[decoded_instruction.src_a] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_JUMP: begin
@@ -373,6 +396,8 @@ module potados_decode_stage(
                             execute_stage.memory_write_data = register_read_response.data_b;
                             execute_stage.memory_op = MEMORY_STORE;
                             execute_stage.stack_pointer_op = STACK_POINTER_INCREMENT;
+
+                            should_stall = register_status.pending_write[3'b001] || register_status.pending_write[decoded_instruction.src_b];
                         end
                         3'b010: begin // POP DST
                             execute_stage.alu_op = ALU_ADD;
@@ -381,6 +406,8 @@ module potados_decode_stage(
                             execute_stage.memory_op = MEMORY_LOAD;
                             execute_stage.stack_pointer_op = STACK_POINTER_DECREMENT;
                             execute_stage.writeback_source = WB_MEMORY;
+
+                            should_stall = register_status.pending_write[3'b001];
                         end
                         default: begin
                         end
@@ -392,11 +419,13 @@ module potados_decode_stage(
                         3'b001: begin // JMPR SRC_B
                             execute_stage.jump_op = JUMP_ALWAYS;
                             execute_stage.jump_target = register_read_response.data_b;
+                            should_stall = register_status.pending_write[decoded_instruction.src_b];
                         end
                         3'b010: begin // JALR SRC_A, DST
                             execute_stage.jump_op = JUMP_ALWAYS;
                             execute_stage.jump_target = register_read_response.data_a;
                             execute_stage.writeback_source = WB_RETURN_ADDRESS;
+                            should_stall = register_status.pending_write[decoded_instruction.src_a];
                         end
                         default: begin
                         end
@@ -411,6 +440,7 @@ module potados_decode_stage(
                         execute_stage.operand_a_value = register_read_response.data_b;
                         execute_stage.operand_b_value = 16'h0000;
                     end
+                    should_stall = register_status.pending_write[decoded_instruction.src_a] || register_status.pending_write[decoded_instruction.src_b];
                 end
 
                 OP_HALT: begin
@@ -420,6 +450,23 @@ module potados_decode_stage(
                 default: begin
                 end
             endcase
+
+            // A one-bit scoreboard permits one in-flight writer per register.
+            // Stall a second writer until the earlier writeback releases it.
+            if (execute_stage.writeback_source != WB_NONE
+                && execute_stage.dst != 3'b000
+                && register_status.pending_write[execute_stage.dst]) begin
+                should_stall = 1'b1;
+            end
+
+            if (execute_stage.stack_pointer_op != STACK_POINTER_NONE
+                && register_status.pending_write[3'b001]) begin
+                should_stall = 1'b1;
+            end
+
+            if (should_stall) begin
+                execute_stage.valid = 1'b0;
+            end
         end
     end
 endmodule
@@ -451,8 +498,10 @@ module instruction_decoder_stage_testbech_helper(
     decoded_instruction_t decoded_instruction;
     register_read_request_t register_read_request;
     register_read_response_t register_read_response;
+    register_status_t register_status;
     register_write_request_t register_write_request;
     stack_pointer_request_t stack_pointer_request;
+    logic decode_should_stall;
 
     always_comb begin
         register_write_request.write_enable = register_write_enable;
@@ -461,6 +510,9 @@ module instruction_decoder_stage_testbech_helper(
 
         stack_pointer_request.write_data = stack_pointer_write_data;
         stack_pointer_request.operation = stack_pointer_operation;
+
+        // The helper has no in-flight pipeline instructions.
+        register_status = '0;
     end
 
     potados_instruction_decoder instruction_decoder_inst (
@@ -487,6 +539,8 @@ module instruction_decoder_stage_testbech_helper(
         .decoded_instruction(decoded_instruction),
         .register_read_request(register_read_request),
         .register_read_response(register_read_response),
+        .register_status(register_status),
+        .should_stall(decode_should_stall),
         .execute_stage(execute_stage)
     );
 endmodule

@@ -29,6 +29,8 @@ module potados_registers  (
             regs.R6 <= 16'h0000;
             regs.R7 <= 16'h0000;
         end else begin
+
+            // Write to register
             if (write_request.write_enable) begin
                 case (write_request.write_address)
                     3'b000: ;

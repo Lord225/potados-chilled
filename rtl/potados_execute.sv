@@ -15,6 +15,7 @@ module potados_execute_stage (
     input logic [15:0]  fpu_output,
 
     output memory_stage_t memory_stage,
+    output logic          should_stall,
 
     output logic         jump_enable,
     output logic [15:0]  jump_address,
@@ -69,6 +70,7 @@ module potados_execute_stage (
         end
 
         halt = execute_stage.valid && execute_stage.halt;
+        should_stall = 1'b0;
     end
 endmodule
 

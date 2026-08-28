@@ -5,6 +5,7 @@
 `include "potados_common.sv"
 `include "potados_instruction_decoder.sv"
 `include "potados_registers.sv"
+`include "potados_scoreboard.sv"
 `include "potados_alu.sv"
 `include "potados_memory.sv"
 `include "potados_execute.sv"
@@ -19,7 +20,8 @@ module potados_memory_stage(
     output logic        ram_load_enable,
     input  logic [15:0] ram_load_data,
     
-    output writeback_stage_t writeback_stage
+    output writeback_stage_t writeback_stage,
+    output logic should_stall
 );
 
     always_comb begin
@@ -37,6 +39,7 @@ module potados_memory_stage(
         writeback_stage.dst = memory_stage.dst;
         writeback_stage.stack_pointer_op = memory_stage.stack_pointer_op;
         writeback_stage.writeback_source = memory_stage.writeback_source;
+        should_stall = 1'b0;
     end
 endmodule
 
@@ -111,8 +114,13 @@ module potados #(
     logic[15:0] ram_load_data;
 
     register_file_t registers;
+    register_status_t register_status;
 
-    logic pipeline_stall = '0;
+    logic decode_declare_stall;
+    logic execute_declare_stall;
+    logic memory_declare_stall;
+    logic writeback_declare_stall;
+    pipeline_stall_t pipeline_stall;
 
     execute_stage_t execute_stage;
     execute_stage_t execute_stage_next;
@@ -133,6 +141,11 @@ module potados #(
     register_write_request_t register_write_request;
     // Request that sets the stack pointer update logic for the current instruction.
     stack_pointer_request_t stack_pointer_request;
+    // Scoreboard inputs are masks because POP can reserve both DST and SP.
+    logic [7:0] scoreboard_reserve_write_mask;
+    logic [7:0] scoreboard_release_write_mask;
+    logic       decode_accept;
+
 
     potados_program_memory #(
         .ROM_FILE(ROM_FILE),
@@ -164,7 +177,6 @@ module potados #(
         .decoded_instruction(decoded_instruction)
     );
 
-    // TODO: Check if this wire is correct and needed.
     assign fetched_instruction_next_pc = fetched_instruction_pc + (decoded_instruction.is_long ? 16'd2 : 16'd1);
 
     potados_decode_stage decode_stage_inst (
@@ -175,20 +187,13 @@ module potados #(
 
         .register_read_request(register_read_request),
         .register_read_response(register_read_response),
+        .register_status(register_status),
+
+        .should_stall(decode_declare_stall),
 
         .execute_stage(execute_stage_next)
     );
 
-    // TODO: Think about how to handle FPU output,
-    // 1) Stall pipeline
-    // 2) Add flag to registers that indicate FPU is busy and stall pipeline on read from this register
-    // 3) ???
-    // Ok this is global problem, same thing with memory and Execute state:
-    // We must stall pipeline when someone tries to read from register that was not written by previous stage yet. So we need to add some kind of "ready" flag to writeback stage and check it in decode stage.
-    // First possible solution:
-    // Add SP_WRITE_PENDING, R2_WRITE_PENDING, R3_WRITE_PENDING, R4_WRITE_PENDING, R5_WRITE_PENDING, R6_WRITE_PENDING, R7_WRITE_PENDING flags to register_file_t and set them in writeback stage when writeback_stage.valid is 1 and writeback_stage.dst is SP, R2, R3, R4, R5, R6 or R7. Then in decode stage check if any of these flags is set for the registers that are being read and if so stall the pipeline.
-    // Track these flags in pipeline, if stage is blocked, block this stage and allow later stages to continue until they reach resolve the pending write
-    // Then with write resolved and value written to register, clear the pending write flag and allow pipeline to continue.    
     potados_execute_stage execute_stage_inst (
         .clk(clk),
         .reset(reset),
@@ -196,6 +201,7 @@ module potados #(
         .fpu_output(16'h0000),
         
         .memory_stage(memory_stage_next),
+        .should_stall(execute_declare_stall),
 
         .jump_enable(jump_enable), 
         .jump_address(jump_address),
@@ -211,7 +217,14 @@ module potados #(
         .ram_load_enable(ram_load_enable),
         .ram_load_data(ram_load_data),
 
-        .writeback_stage(writeback_stage_next)
+        .writeback_stage(writeback_stage_next),
+        .should_stall(memory_declare_stall)
+    );
+
+    potados_writeback_stage writeback_stage_inst (
+        .writeback_stage(writeback_stage),
+        .register_write_request(register_write_request),
+        .stack_pointer_request(stack_pointer_request)
     );
 
     potados_registers registers_inst (
@@ -225,6 +238,43 @@ module potados #(
         .registers(registers)
     );
 
+    // Decode reserves every future register/SP write at the same edge that
+    // accepts the instruction into execute. Writeback releases reservations
+    // when the corresponding architectural updates commit.
+    always_comb begin
+        decode_accept = execute_stage_next.valid
+            && !decode_declare_stall
+            && (pipeline_stall == PIPELINE_STALL_NONE);
+
+        scoreboard_reserve_write_mask = '0;
+        if (decode_accept) begin
+            if (execute_stage_next.writeback_source != WB_NONE) begin
+                scoreboard_reserve_write_mask[execute_stage_next.dst] = 1'b1;
+            end
+            if (execute_stage_next.stack_pointer_op != STACK_POINTER_NONE) begin
+                scoreboard_reserve_write_mask[3'b001] = 1'b1;
+            end
+        end
+        scoreboard_reserve_write_mask[3'b000] = 1'b0;
+
+        scoreboard_release_write_mask = '0;
+        if (register_write_request.write_enable) begin
+            scoreboard_release_write_mask[register_write_request.write_address] = 1'b1;
+        end
+        if (stack_pointer_request.operation != STACK_POINTER_NONE) begin
+            scoreboard_release_write_mask[3'b001] = 1'b1;
+        end
+        scoreboard_release_write_mask[3'b000] = 1'b0;
+    end
+
+    potados_scoreboard scoreboard_inst (
+        .clk(clk),
+        .reset(reset),
+        .reserve_write_mask(scoreboard_reserve_write_mask),
+        .release_write_mask(scoreboard_release_write_mask),
+        .register_status(register_status)
+    );
+
     potados_memory potados_memory (
         .clk         (clk),
         .address     (ram_address),
@@ -232,12 +282,6 @@ module potados #(
         .store_data  (ram_store_data),
         .load_enable (ram_load_enable),
         .load_data   (ram_load_data)
-    );
-
-    potados_writeback_stage writeback_stage_inst (
-        .writeback_stage(writeback_stage),
-        .register_write_request(register_write_request),
-        .stack_pointer_request(stack_pointer_request)
     );
 
     always_ff @(posedge clk or posedge reset) begin
@@ -248,17 +292,54 @@ module potados #(
             memory_stage <= '0;
             writeback_stage <= '0;
         end else begin
-            if(pipeline_stall == 1'b0) begin
-                execute_stage <= execute_stage_next;
-                memory_stage <= memory_stage_next;
-                writeback_stage <= writeback_stage_next;
-            end else begin
-                execute_stage <= execute_stage;
-                memory_stage <= memory_stage;
-                writeback_stage <= writeback_stage;
-            end
+            case (pipeline_stall)
+                PIPELINE_STALL_NONE: begin
+                    execute_stage   <= execute_stage_next;
+                    memory_stage    <= memory_stage_next;
+                    writeback_stage <= writeback_stage_next;
+                end
+
+                PIPELINE_STALL_EXECUTE: begin
+                    // Execute retains its instruction.
+                    // Older memory/writeback instructions continue draining.
+                    execute_stage   <= execute_stage;
+                    memory_stage    <= '0;
+                    writeback_stage <= writeback_stage_next;
+                end
+
+                PIPELINE_STALL_MEMORY: begin
+                    // Memory cannot accept another execute result.
+                    execute_stage   <= execute_stage;
+                    memory_stage    <= memory_stage;
+                    writeback_stage <= '0;
+                end
+
+                PIPELINE_STALL_WRITEBACK: begin
+                    // Nothing downstream can accept another instruction.
+                    execute_stage   <= execute_stage;
+                    memory_stage    <= memory_stage;
+                    writeback_stage <= writeback_stage;
+                end
+
+                default: begin
+                    execute_stage   <= execute_stage;
+                    memory_stage    <= memory_stage;
+                    writeback_stage <= writeback_stage;
+                end
+            endcase
             fetch_low_word_request <= fetch_low_word_request_next;
             fetch_high_word_request <= fetch_high_word_request_next;
+        end
+    end
+
+    always_comb begin
+        pipeline_stall = PIPELINE_STALL_NONE;
+        if (writeback_declare_stall) begin
+            pipeline_stall = PIPELINE_STALL_WRITEBACK;
+        end else if (memory_declare_stall) begin
+            pipeline_stall = PIPELINE_STALL_MEMORY;
+        end else if (execute_declare_stall) begin
+            pipeline_stall = PIPELINE_STALL_EXECUTE;
         end
     end
 
