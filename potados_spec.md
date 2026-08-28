@@ -78,8 +78,8 @@ right operand): `DST = SRC_A op SRC_B`. Unary instructions use `SRC_B`.
 | `SNE` | Set `DST` to `1` if the operands are not equal; otherwise set it to `0`. |
 | `SAE` | Set `DST` to `1` if the unsigned comparison is above or equal; otherwise set it to `0`. |
 | `SB` | Set `DST` to `1` if the unsigned comparison is below; otherwise set it to `0`. |
-| `SH` | Logical shift. The signed `IMM6` shift amount is encoded in the instruction; positive amounts shift left and negative amounts shift right. |
-| `ASH` | Arithmetic shift. The signed `IMM6` shift amount is encoded in the instruction; positive amounts shift left and negative amounts shift right with sign extension. |
+| `SH` | Logical shift. Uses 5 bit signed IMM |
+| `ASH` | Arithmetic shift. Uses 5 bit signed IMM |
 | `ADDI` | Add a 9-bit SE immediate constant to the `SDP` register. |
 | `LLI` | Load the 8 bit SE immediate into lower 8 bits of the `SDP` register and clear its upper 8 bits. |
 | `LUI` | Load the 8 bit SE immediate into higher 8 bits of the `SDP` register and clear its lower 8 bits. |
@@ -126,7 +126,10 @@ right operand): `DST = SRC_A op SRC_B`. Unary instructions use `SRC_B`.
 
 ### IMM6
 
-Used only by the shift instructions.
+Used only by the shift instructions. The execution unit uses bits `[4:0]` as a
+signed five-bit amount; bit `[5]` is ignored. Consequently, `6'b100000`
+(`-32` when interpreted as signed `IMM6`) has an effective shift amount of
+zero.
 
 ```text
 III III

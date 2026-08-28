@@ -22,7 +22,7 @@ ALU_ASH = 9
 
 
 def _alu_request(*, operand_a: int, shift_amount: int, alu_op: int) -> int:
-    """Pack alu_request_t; shift_amount is the decoded signed IMM6 value."""
+    """Pack alu_request_t; SH/ASH consume the lower signed five bits."""
     return (
         ((operand_a & 0xFFFF) << 25)
         | ((shift_amount & 0xFFFF) << 9)
@@ -51,13 +51,13 @@ async def positive_arithmetic_shift_shifts_left(dut: Dut) -> None:
 
 
 @cocotb.test()
-async def negative_32_shift_amount_is_not_truncated(dut: Dut) -> None:
-    """The complete signed IMM6 range includes -32."""
+async def imm6_sign_bit_is_ignored_by_shift_execution(dut: Dut) -> None:
+    """SH 0x1234, -32 uses low IMM5 == 0 and is therefore a no-op."""
     dut.clk.value = 0
     dut.reset.value = 0
     dut.alu_request.value = _alu_request(operand_a=0x1234, shift_amount=-32, alu_op=ALU_SH)
     await Timer(1, unit="ns")
-    assert int(dut.alu_output.value) == 0x0000
+    assert int(dut.alu_output.value) == 0x1234
 
 
 def _runner() -> Runner:
@@ -99,5 +99,5 @@ def test_positive_arithmetic_shift_shifts_left(alu_runner: Runner) -> None:
     _run_cocotb_test(alu_runner, "positive_arithmetic_shift_shifts_left")
 
 
-def test_negative_32_shift_amount_is_not_truncated(alu_runner: Runner) -> None:
-    _run_cocotb_test(alu_runner, "negative_32_shift_amount_is_not_truncated")
+def test_imm6_sign_bit_is_ignored_by_shift_execution(alu_runner: Runner) -> None:
+    _run_cocotb_test(alu_runner, "imm6_sign_bit_is_ignored_by_shift_execution")

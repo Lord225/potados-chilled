@@ -53,23 +53,23 @@ module potados_alu  (
 
     function automatic logic[15:0] logic_shift(
         input logic [15:0] value,
-        input logic signed [5:0] shift
+        input logic [4:0] shift
     );
-        if (shift < 0) begin
-            logic_shift = value >> (-shift);
+        if (shift[4]) begin
+            logic_shift = value >> (-shift[4:0]);
         end else begin
-            logic_shift = value << shift;
+            logic_shift = value << shift[3:0];
         end
     endfunction
 
     function automatic logic[15:0] arithmetic_shift(
         input logic [15:0] value,
-        input logic signed [5:0] shift
+        input logic [4:0] shift
     );
-        if (shift < 0) begin
-            arithmetic_shift = $unsigned($signed(value) >>> (-shift));
+        if (shift[4]) begin
+            arithmetic_shift = $unsigned($signed(value) >>> (-shift[4:0]));
         end else begin
-            arithmetic_shift = value << shift;
+            arithmetic_shift = value << shift[3:0];
         end
     endfunction
 
@@ -130,12 +130,12 @@ module potados_alu  (
                 out_ready_next  = 1'b1;
             end
             ALU_SH: begin
-                alu_output_next = logic_shift(operard_a, operard_b[5:0]);
+                alu_output_next = logic_shift(operard_a, operard_b[4:0]);
                 cmp_output_next = CMP_RESULT_NONE;
                 out_ready_next  = 1'b1;
             end
             ALU_ASH: begin
-                alu_output_next = arithmetic_shift(operard_a, operard_b[5:0]);
+                alu_output_next = arithmetic_shift(operard_a, operard_b[4:0]);
                 cmp_output_next = CMP_RESULT_NONE;
                 out_ready_next  = 1'b1;
             end
