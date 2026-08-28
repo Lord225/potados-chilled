@@ -1,5 +1,8 @@
 
-module potados_rom(
+module potados_rom #(
+    parameter ROM_FILE = "rom.hex",
+    parameter LOAD_ROM_FILE = 1'b1
+)(
     input logic        clk,
     
     input logic[15:0]  address,
@@ -8,8 +11,14 @@ module potados_rom(
 );
     logic [15:0] memory [16'h0000:16'hffff];
 
+    integer word_index;
     initial begin
-        $readmemh("rom.hex", memory);
+        for (word_index = 0; word_index < 65536; word_index = word_index + 1) begin
+            memory[word_index] = 16'h0000;
+        end
+        if (LOAD_ROM_FILE) begin
+            $readmemh(ROM_FILE, memory);
+        end
     end
 
     always_ff @(posedge clk) begin
@@ -64,7 +73,10 @@ module potados_memory (
     );
 endmodule
 
-module potados_program_memory (
+module potados_program_memory #(
+    parameter ROM_FILE = "rom.hex",
+    parameter LOAD_ROM_FILE = 1'b1
+)(
     input logic        clk,
     input logic        reset,
     
@@ -95,7 +107,10 @@ module potados_program_memory (
     logic [15:0] rom_data_prev_next;
 
 
-    potados_rom rom_inst (
+    potados_rom #(
+        .ROM_FILE(ROM_FILE),
+        .LOAD_ROM_FILE(LOAD_ROM_FILE)
+    ) rom_inst (
         .clk(clk),
         .address(pc),
         .rom_data(rom_data)

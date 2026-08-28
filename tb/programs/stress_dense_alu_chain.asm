@@ -1,0 +1,7 @@
+LLI R2, 2
+ADDI R2, 3
+MUL R3, R2, R2
+ADDI R3, 1
+ADD R4, R3, R2
+.space 4
+HALT

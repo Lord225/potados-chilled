@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+import os
+import shutil
+from pathlib import Path
+from typing import Any
+
+import cocotb
+import pytest
+from cocotb.clock import Clock
+from cocotb.triggers import RisingEdge, Timer
+from cocotb_tools.runner import get_runner
+from potados_asm import assemble_file
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RTL_DIR = PROJECT_ROOT / "rtl"
+PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
+SIM_BUILD = PROJECT_ROOT / "build" / "sim" / "potados_cpu_edge_cases"
+
+Dut = Any
+Runner = Any
+
+
+def _register(register_file: int, address: int) -> int:
+    return (register_file >> ((7 - address) * 16)) & 0xFFFF
+
+
+def _load_program(dut: Dut, program: str) -> None:
+    result = assemble_file(PROGRAM_DIR / program)
+    memory = dut.program_memory_inst.rom_inst.memory
+    for address, word in result.words.items():
+        memory[address].value = word
+
+
+async def _reset(dut: Dut, program: str) -> None:
+    _load_program(dut, program)
+    dut.clk.value = 0
+    dut.reset.value = 1
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await RisingEdge(dut.clk)
+    await Timer(1, unit="ns")
+    dut.reset.value = 0
+
+
+async def _run_until_halt(dut: Dut, *, maximum_cycles: int = 96) -> None:
+    for _ in range(maximum_cycles):
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        if int(dut.halt_out.value):
+            return
+    raise AssertionError(f"CPU did not reach HALT within {maximum_cycles} cycles")
+
+
+@cocotb.test()
+async def raw_alu_dependency_uses_the_previous_result(dut: Dut) -> None:
+    """LLI R2, 3; ADDI R2, 1 must produce R2 == 4 without hand-inserted NOPs."""
+    await _reset(dut, "edge_raw_lli_addi.asm")
+    await _run_until_halt(dut)
+    assert _register(int(dut.registers_out.value), 0b010) == 0x0004
+
+
+@cocotb.test()
+async def store_then_load_returns_the_stored_word(dut: Dut) -> None:
+    """A synchronous RAM response must be retained until LD writeback."""
+    await _reset(dut, "edge_store_load.asm")
+    await _run_until_halt(dut)
+    assert _register(int(dut.registers_out.value), 0b100) == 0x00A5
+
+
+@cocotb.test()
+async def push_then_pop_preserves_value_and_stack_pointer(dut: Dut) -> None:
+    """PUSH/POP must use the old/decremented SP addresses and restore SP."""
+    await _reset(dut, "edge_push_pop.asm")
+    await _run_until_halt(dut)
+    registers = int(dut.registers_out.value)
+    assert _register(registers, 0b001) == 0x0020
+    assert _register(registers, 0b011) == 0x00A5
+
+
+@cocotb.test()
+async def unconditional_jump_discards_the_fallthrough_path(dut: Dut) -> None:
+    """JMP must execute its target, not an already fetched fallthrough HALT."""
+    await _reset(dut, "edge_jump_unconditional.asm")
+    await _run_until_halt(dut)
+    assert _register(int(dut.registers_out.value), 0b010) == 0x002A
+
+
+@cocotb.test()
+async def taken_conditional_jump_discards_the_fallthrough_path(dut: Dut) -> None:
+    """JE with equal operands must select its target and flush fallthrough."""
+    await _reset(dut, "edge_jump_taken.asm")
+    await _run_until_halt(dut)
+    assert _register(int(dut.registers_out.value), 0b100) == 0x002A
+
+
+@cocotb.test()
+async def not_taken_conditional_jump_keeps_the_fallthrough_path(dut: Dut) -> None:
+    """JE with unequal operands must not redirect fetch to its target."""
+    await _reset(dut, "edge_jump_not_taken.asm")
+    await _run_until_halt(dut)
+    assert _register(int(dut.registers_out.value), 0b100) == 0x0011
+
+
+@cocotb.test()
+async def halt_is_sticky_until_reset(dut: Dut) -> None:
+    """HALT must remain observable and prevent execution from restarting."""
+    await _reset(dut, "edge_halt_sticky.asm")
+    await _run_until_halt(dut)
+    for _ in range(4):
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        assert int(dut.halt_out.value) == 1
+
+
+def _runner() -> Runner:
+    runner = get_runner(os.getenv("SIM", "verilator"))
+    shutil.rmtree(SIM_BUILD, ignore_errors=True)
+    runner.build(
+        sources=[RTL_DIR / "potados.sv"],
+        includes=[RTL_DIR],
+        hdl_toplevel="potados",
+        build_dir=SIM_BUILD,
+        parameters={"LOAD_ROM_FILE": 0},
+        build_args=["-Wno-WIDTHTRUNC"],
+        always=True,
+        waves=os.getenv("WAVES", "0") in {"1", "true", "yes"},
+    )
+    return runner
+
+
+@pytest.fixture(scope="module")
+def edge_case_runner() -> Runner:
+    return _runner()
+
+
+def _run_cocotb_test(runner: Runner, testcase: str) -> None:
+    try:
+        runner.test(
+            hdl_toplevel="potados",
+            test_module=__name__,
+            build_dir=SIM_BUILD,
+            test_filter=testcase,
+        )
+    except SystemExit as exc:
+        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+
+
+@pytest.mark.xfail(strict=True, reason="Pipeline has no RAW hazard stall or forwarding.")
+def test_raw_alu_dependency_uses_the_previous_result(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "raw_alu_dependency_uses_the_previous_result")
+
+
+@pytest.mark.xfail(strict=True, reason="RAM responses are not carried to writeback.")
+def test_store_then_load_returns_the_stored_word(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "store_then_load_returns_the_stored_word")
+
+
+@pytest.mark.xfail(strict=True, reason="POP RAM response is not carried to writeback.")
+def test_push_then_pop_preserves_value_and_stack_pointer(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "push_then_pop_preserves_value_and_stack_pointer")
+
+
+@pytest.mark.xfail(strict=True, reason="Taken jumps do not flush younger fallthrough instructions.")
+def test_unconditional_jump_discards_the_fallthrough_path(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "unconditional_jump_discards_the_fallthrough_path")
+
+
+@pytest.mark.xfail(strict=True, reason="Taken jumps do not flush younger fallthrough instructions.")
+def test_taken_conditional_jump_discards_the_fallthrough_path(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "taken_conditional_jump_discards_the_fallthrough_path")
+
+
+def test_not_taken_conditional_jump_keeps_the_fallthrough_path(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "not_taken_conditional_jump_keeps_the_fallthrough_path")
+
+
+@pytest.mark.xfail(strict=True, reason="HALT is currently an execute-stage pulse, not sticky state.")
+def test_halt_is_sticky_until_reset(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "halt_is_sticky_until_reset")

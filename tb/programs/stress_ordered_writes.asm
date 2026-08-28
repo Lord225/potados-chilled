@@ -1,0 +1,5 @@
+LLI R2, 1
+LLI R2, 2
+LLI R2, 3
+.space 4
+HALT

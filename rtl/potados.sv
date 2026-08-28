@@ -24,12 +24,19 @@ module potados_memory_stage(
 
     always_comb begin
         ram_address = memory_stage.alu_result;
-        ram_store_enable = (memory_stage.memory_op == MEMORY_STORE);
+        ram_store_enable = memory_stage.valid && (memory_stage.memory_op == MEMORY_STORE);
         ram_store_data = memory_stage.memory_write_data;
-        ram_load_enable = (memory_stage.memory_op == MEMORY_LOAD);
+        ram_load_enable = memory_stage.valid && (memory_stage.memory_op == MEMORY_LOAD);
 
+        writeback_stage = '0;
         writeback_stage.valid = memory_stage.valid;
+        writeback_stage.alu_result = memory_stage.alu_result;
+        writeback_stage.memory_write_data = memory_stage.memory_write_data;
+        writeback_stage.fpu_result = memory_stage.fpu_result;
+        writeback_stage.next_pc = memory_stage.next_pc;
         writeback_stage.dst = memory_stage.dst;
+        writeback_stage.stack_pointer_op = memory_stage.stack_pointer_op;
+        writeback_stage.writeback_source = memory_stage.writeback_source;
     end
 endmodule
 
@@ -40,7 +47,8 @@ module potados_writeback_stage(
     output stack_pointer_request_t  stack_pointer_request
 );
     always_comb begin
-        register_write_request.write_enable = writeback_stage.valid;
+        register_write_request.write_enable = writeback_stage.valid
+            && (writeback_stage.writeback_source != WB_NONE);
         register_write_request.write_address = writeback_stage.dst;
 
         case (writeback_stage.writeback_source)
@@ -52,13 +60,17 @@ module potados_writeback_stage(
             default: register_write_request.write_data = '0;
         endcase
 
-        // TODO: Do it later.
-        stack_pointer_request.operation = writeback_stage.stack_pointer_op;
+        stack_pointer_request.operation = writeback_stage.valid
+            ? writeback_stage.stack_pointer_op
+            : STACK_POINTER_NONE;
         stack_pointer_request.write_data = '0; // TODO
     end
 endmodule
 
-module potados(
+module potados #(
+    parameter ROM_FILE = "rom.hex",
+    parameter LOAD_ROM_FILE = 1'b1
+)(
     input logic clk,
     input logic reset,
     output register_file_t registers_out,
@@ -122,15 +134,18 @@ module potados(
     // Request that sets the stack pointer update logic for the current instruction.
     stack_pointer_request_t stack_pointer_request;
 
-    potados_program_memory program_memory_inst (
+    potados_program_memory #(
+        .ROM_FILE(ROM_FILE),
+        .LOAD_ROM_FILE(LOAD_ROM_FILE)
+    ) program_memory_inst (
         .clk(clk),
         .reset(reset),
         
         .request_long_instruction(fetch_high_word_request),
         .request_next_instruction(fetch_low_word_request),
         
-        .jump_address(16'b0),
-        .jump_enable(1'b0),
+        .jump_address(jump_address),
+        .jump_enable(jump_enable),
         
         .low_instruction(fetched_instruction_low),
         .high_instruction(fetched_instruction_high),
@@ -178,6 +193,7 @@ module potados(
         .clk(clk),
         .reset(reset),
         .execute_stage(execute_stage),
+        .fpu_output(16'h0000),
         
         .memory_stage(memory_stage_next),
 

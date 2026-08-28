@@ -11,4 +11,5 @@ dependencies = [
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]
-testpaths = ["tb"]
+pythonpath = ["asm/src"]
+testpaths = ["tb", "asm/tests"]

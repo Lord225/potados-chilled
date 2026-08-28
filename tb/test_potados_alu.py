@@ -56,11 +56,9 @@ async def _clock_cycles(dut: Dut, cycles: int) -> None:
 
 async def _reset(dut: Dut) -> None:
     dut.reset.value = 1
-    dut.cin.value = 0
-    dut.operard_a.value = 0
-    dut.operard_b.value = 0
-    dut.alu_op.value = ALU_NONE
-    dut.cmp_op.value = CMP_NONE
+    dut.alu_request.value = _pack_alu_request(
+        cin=0, operand_a=0, operand_b=0, alu_op=ALU_NONE, cmp_op=CMP_NONE
+    )
     await _clock_cycles(dut, 2)
     assert int(dut.alu_output.value) == 0
     assert int(dut.cmp_output.value) == CMP_RESULT_NONE
@@ -77,12 +75,27 @@ async def _execute(
     cin: int = 0,
     cmp_op: int = CMP_NONE,
 ) -> None:
-    dut.alu_op.value = alu_op
-    dut.operard_a.value = operand_a & 0xFFFF
-    dut.operard_b.value = operand_b & 0xFFFF
-    dut.cin.value = cin
-    dut.cmp_op.value = cmp_op
+    dut.alu_request.value = _pack_alu_request(
+        cin=cin,
+        operand_a=operand_a,
+        operand_b=operand_b,
+        alu_op=alu_op,
+        cmp_op=cmp_op,
+    )
     await _clock_cycles(dut, 1)
+
+
+def _pack_alu_request(
+    *, cin: int, operand_a: int, operand_b: int, alu_op: int, cmp_op: int
+) -> int:
+    """Pack alu_request_t in its SystemVerilog declaration order."""
+    return (
+        ((cin & 0b1) << 41)
+        | ((operand_a & 0xFFFF) << 25)
+        | ((operand_b & 0xFFFF) << 9)
+        | ((alu_op & 0b1_1111) << 4)
+        | (cmp_op & 0b1111)
+    )
 
 
 def _signed16(value: int) -> int:
@@ -140,16 +153,16 @@ def _expected_output(
     if alu_op == ALU_MUL:
         return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SH:
-        shift = operand_b & 0x1F
-        if shift & 0x10:
-            result = operand_a >> ((-shift) & 0x1F)
+        shift = operand_b & 0x3F
+        if shift & 0x20:
+            result = operand_a >> ((-shift) & 0x3F)
         else:
             result = operand_a << shift
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_ASH:
-        shift = operand_b & 0x1F
-        if shift & 0x10:
-            result = _signed16(operand_a) >> ((-shift) & 0x1F)
+        shift = operand_b & 0x3F
+        if shift & 0x20:
+            result = _signed16(operand_a) >> ((-shift) & 0x3F)
         else:
             result = operand_a << shift
         return result & 0xFFFF, CMP_RESULT_NONE, 1
@@ -215,11 +228,11 @@ async def multiply_and_shift_operations(dut: Dut) -> None:
     await _execute(dut, alu_op=ALU_SH, operand_a=1, operand_b=4)
     assert int(dut.alu_output.value) == 0x0010
 
-    # Negative signed IMM5 values shift right; -1 shifts right by one bit.
+    # Negative signed IMM6 values shift right; -1 shifts right by one bit.
     await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0x4000
 
-    # Negative signed IMM5 values preserve the sign for arithmetic shifts.
+    # Negative signed IMM6 values preserve the sign for arithmetic shifts.
     await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=-1)
     assert int(dut.alu_output.value) == 0xC000
 
