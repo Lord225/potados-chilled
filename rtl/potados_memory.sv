@@ -80,31 +80,52 @@ module potados_program_memory #(
     input logic        clk,
     input logic        reset,
     
+    // High when the CPU has decoded the low word of a long instruction and
+    // needs the high word on the next clock.
     input logic        request_long_instruction,
-    input logic        request_next_instruction,
+    // High when the CPU has accepted the complete instruction currently
+    // presented on low_instruction/high_instruction.
+    input logic        instruction_accepted,
+    // The address to jump to on the next clock.  This is the address of the
     input logic[15:0]  jump_address,
+    // High when the CPU has requested a jump to jump_address on the next clock.
     input logic        jump_enable,
+    // High when the CPU has requested a halt.  The program memory will stop
+    input logic        halt,
 
+    // The low and high words of the instruction currently presented to the CPU.
     output logic[15:0] low_instruction,
     output logic[15:0] high_instruction,
+    
+    // The address of the low word of the instruction currently presented to the CPU.
     output logic[15:0] instruction_pc,
+
+    // High when low_instruction is valid.  Low when the CPU has accepted it.
     output logic       low_valid,
-    output logic       high_valid
+    // High when high_instruction is valid.  Low when the CPU has accepted it.
+    output logic       high_valid,
+
+    output logic       halted
 );
     logic [15:0] pc;
     logic [15:0] pc_next;
     logic [15:0] rom_data;
     logic [15:0] rom_data_prev;
+    logic [15:0] rom_data_high_prev;
 
-    typedef enum logic [1:0] {
-        FETCH_IDLE,
+    typedef enum logic [2:0] {
+        FETCH_START_SHORT,
         FETCH_SHORT_RESPONSE,
-        FETCH_LONG_RESPONSE
+        FETCH_SHORT_HELD,
+        FETCH_LONG_RESPONSE,
+        FETCH_LONG_HELD,
+        HALTED
     } fetch_state_t;
 
     fetch_state_t fetch_state;
     fetch_state_t fetch_state_next;
     logic [15:0] rom_data_prev_next;
+    logic [15:0] rom_data_high_prev_next;
 
 
     potados_rom #(
@@ -120,47 +141,105 @@ module potados_program_memory #(
         pc_next = pc;
         fetch_state_next = fetch_state;
         rom_data_prev_next = rom_data_prev;
+        rom_data_high_prev_next = rom_data_high_prev;
         low_instruction = 16'h0000;
         high_instruction = 16'h0000;
         instruction_pc = 16'h0000;
         low_valid = 1'b0;
         high_valid = 1'b0;
+        halted = 0;
 
         if (jump_enable) begin
             pc_next = jump_address;
-            fetch_state_next = FETCH_IDLE;
+            fetch_state_next = FETCH_START_SHORT;
         end else begin
             case (fetch_state)
-                FETCH_IDLE: begin
-                    if (request_long_instruction) begin
-                        // PC already points to the high word. The preceding
-                        // short response was saved in rom_data_prev.
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_LONG_RESPONSE;
-                    end else if (request_next_instruction) begin
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_SHORT_RESPONSE;
-                    end
+                // Entry point for the fetch
+                FETCH_START_SHORT: begin
+                    // The ROM samples the current PC on this clock edge.
+                    // Advance PC for the following sequential fetch.
+                    pc_next = pc + 16'h0001;
+                    fetch_state_next = FETCH_SHORT_RESPONSE;
                 end
+                // Fetch short instruction and cerry to next one
                 FETCH_SHORT_RESPONSE: begin
                     low_instruction = rom_data;
                     instruction_pc = pc - 16'h0001;
                     low_valid = 1'b1;
-                    // Retain this word in case the decoder requests its high
-                    // word on the following fetch command.
-                    rom_data_prev_next = rom_data;
-                    fetch_state_next = FETCH_IDLE;
+                    if (request_long_instruction) begin
+                        // Decode consumed the low word and identified a long instruction.
+                        rom_data_prev_next = rom_data;
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_LONG_RESPONSE;
+                    end else if (instruction_accepted) begin
+                        // Decode consumed a complete short instruction.
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_SHORT_RESPONSE;
+                    end else if (halt) begin
+                        // Decode has requested a halt.  Stop fetching instructions.
+                        fetch_state_next = HALTED;
+                    end else begin
+                        // The registered ROM will present its next output on
+                        // the next clock, so retain this response while decode
+                        // is stalled.
+                        rom_data_prev_next = rom_data;
+                        fetch_state_next = FETCH_SHORT_HELD;
+                    end
                 end
+                // If instruction was not accepted, we need to hold it until it is.
+                FETCH_SHORT_HELD: begin
+                    low_instruction = rom_data_prev;
+                    instruction_pc = pc - 16'h0001;
+                    low_valid = 1'b1;
+                    if (request_long_instruction) begin
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_LONG_RESPONSE;
+                    end else if (instruction_accepted) begin
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_SHORT_RESPONSE;
+                    end
+                end
+                // We need to fetch the next word of a long instruction
+                // The ROM samples the current PC on this clock edge. and advances the PC
                 FETCH_LONG_RESPONSE: begin
                     low_instruction = rom_data_prev;
                     high_instruction = rom_data;
                     instruction_pc = pc - 16'h0002;
                     low_valid = 1'b1;
                     high_valid = 1'b1;
-                    fetch_state_next = FETCH_IDLE;
+                    if (instruction_accepted) begin
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_SHORT_RESPONSE;
+                    end else if (halt) begin
+                        // Decode has requested a halt.  Stop fetching instructions.
+                        fetch_state_next = HALTED;
+                    end else begin
+                        rom_data_high_prev_next = rom_data;
+                        fetch_state_next = FETCH_LONG_HELD;
+                    end
+                end
+                // If instruction was not accepted we need to hold it until it is.
+                FETCH_LONG_HELD: begin
+                    low_instruction = rom_data_prev;
+                    high_instruction = rom_data_high_prev;
+                    instruction_pc = pc - 16'h0002;
+                    low_valid = 1'b1;
+                    high_valid = 1'b1;
+                    if (instruction_accepted) begin
+                        pc_next = pc + 16'h0001;
+                        fetch_state_next = FETCH_SHORT_RESPONSE;
+                    end
+                end
+                HALTED: begin
+                    low_instruction = 16'h0000;
+                    high_instruction = 16'h0000;
+                    instruction_pc = pc - 16'h0001;
+                    low_valid = 1'b0;
+                    high_valid = 1'b0;
+                    halted = 1'b1;
                 end
                 default: begin
-                    fetch_state_next = FETCH_IDLE;
+                    fetch_state_next = FETCH_START_SHORT;
                 end
             endcase
         end
@@ -171,10 +250,12 @@ module potados_program_memory #(
         if (reset) begin
             pc <= 16'h0000;
             rom_data_prev <= 16'h0000;
-            fetch_state <= FETCH_IDLE;
+            rom_data_high_prev <= 16'h0000;
+            fetch_state <= FETCH_START_SHORT;
         end else begin
             pc <= pc_next;
             rom_data_prev <= rom_data_prev_next;
+            rom_data_high_prev <= rom_data_high_prev_next;
             fetch_state <= fetch_state_next;
         end
     end

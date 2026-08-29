@@ -121,12 +121,10 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
         pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
 
 
-@pytest.mark.xfail(strict=True, reason="Adjacent ADDI operations need RAW forwarding or stalls.")
 def test_repeated_addi_accumulates_on_one_register(pipeline_runner: Runner) -> None:
     _run_cocotb_test(pipeline_runner, "repeated_addi_accumulates_on_one_register")
 
 
-@pytest.mark.xfail(strict=True, reason="Both ALU read ports observe a stale value without RAW handling.")
 def test_same_register_on_both_read_ports_tracks_latest_value(pipeline_runner: Runner) -> None:
     _run_cocotb_test(pipeline_runner, "same_register_on_both_read_ports_tracks_latest_value")
 
@@ -139,6 +137,5 @@ def test_back_to_back_writes_commit_in_program_order(pipeline_runner: Runner) ->
     _run_cocotb_test(pipeline_runner, "back_to_back_writes_commit_in_program_order")
 
 
-@pytest.mark.xfail(strict=True, reason="The dense mixed ALU chain needs RAW forwarding or stalls.")
 def test_dense_mixed_alu_chain_uses_each_latest_result(pipeline_runner: Runner) -> None:
     _run_cocotb_test(pipeline_runner, "dense_mixed_alu_chain_uses_each_latest_result")

@@ -29,7 +29,7 @@ async def _clock_cycle(dut: Dut) -> None:
 
 async def _idle(dut: Dut) -> None:
     dut.request_long_instruction.value = 0
-    dut.request_next_instruction.value = 0
+    dut.instruction_accepted.value = 0
     dut.jump_enable.value = 0
     await Timer(1, unit="ns")
 
@@ -37,43 +37,54 @@ async def _idle(dut: Dut) -> None:
 async def _reset(dut: Dut) -> None:
     dut.reset.value = 1
     dut.request_long_instruction.value = 0
-    dut.request_next_instruction.value = 0
+    dut.instruction_accepted.value = 0
     dut.jump_address.value = 0
     dut.jump_enable.value = 0
     await _clock_cycle(dut)
     assert int(dut.low_valid.value) == 0
     dut.reset.value = 0
 
-    # Allow the synchronous ROM to load address zero.
+    # Allow the synchronous ROM to load address zero and present its response.
+    await _clock_cycle(dut)
     await _clock_cycle(dut)
 
 
-async def _fetch_short(dut: Dut, expected_word: int) -> None:
-    """Request one instruction and wait for its registered response."""
-    dut.request_next_instruction.value = 1
-    await _clock_cycle(dut)
-    dut.request_next_instruction.value = 0
+async def _expect_short(dut: Dut, expected_word: int) -> None:
+    """Wait for and check the short instruction currently being held."""
+    for _ in range(4):
+        if int(dut.low_valid.value):
+            break
+        await _clock_cycle(dut)
 
     assert int(dut.low_valid.value) == 1
     assert int(dut.low_instruction.value) == expected_word
     assert int(dut.high_instruction.value) == 0
-    # The response is held for one cycle; return with the fetch controller idle
-    # so the caller can issue the next command.
+
+async def _accept_instruction(dut: Dut) -> None:
+    """Accept the currently held complete instruction and start the next fetch."""
+    dut.instruction_accepted.value = 1
     await _clock_cycle(dut)
+    dut.instruction_accepted.value = 0
 
 
 async def _fetch_long(
     dut: Dut, expected_low_word: int, expected_high_word: int
 ) -> None:
-    """Request one long instruction and wait for its registered response."""
+    """Consume a held low word and check the resulting long response."""
     dut.request_long_instruction.value = 1
     await _clock_cycle(dut)
     dut.request_long_instruction.value = 0
 
+    for _ in range(4):
+        if int(dut.high_valid.value):
+            break
+        await _clock_cycle(dut)
+
     assert int(dut.low_valid.value) == 1
     assert int(dut.low_instruction.value) == expected_low_word
     assert int(dut.high_instruction.value) == expected_high_word
-    await _clock_cycle(dut)
+
+    await _accept_instruction(dut)
 
 
 @cocotb.test()
@@ -82,9 +93,11 @@ async def reset_and_short_instruction_fetch(dut: Dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
-    await _fetch_short(dut, ROM_WORDS[0])
-    await _fetch_short(dut, expected_word=ROM_WORDS[1])
-    await _fetch_short(dut, expected_word=ROM_WORDS[2])
+    await _expect_short(dut, ROM_WORDS[0])
+    await _accept_instruction(dut)
+    await _expect_short(dut, ROM_WORDS[1])
+    await _accept_instruction(dut)
+    await _expect_short(dut, ROM_WORDS[2])
 
 
 @cocotb.test()
@@ -93,11 +106,11 @@ async def reset_and_long_instruction_fetch(dut: Dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
-    await _fetch_short(dut, ROM_WORDS[0])
+    await _expect_short(dut, ROM_WORDS[0])
     await _fetch_long(
         dut, expected_low_word=ROM_WORDS[0], expected_high_word=ROM_WORDS[1]
     )
-    await _fetch_short(dut, expected_word=ROM_WORDS[2])
+    await _expect_short(dut, expected_word=ROM_WORDS[2])
 
 
 @cocotb.test()
@@ -106,15 +119,16 @@ async def reset_and_jump(dut: Dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
-    await _fetch_short(dut, ROM_WORDS[0])
-    await _fetch_short(dut, expected_word=ROM_WORDS[1])
+    await _expect_short(dut, ROM_WORDS[0])
+    await _accept_instruction(dut)
+    await _expect_short(dut, ROM_WORDS[1])
 
     dut.jump_address.value = 4
     dut.jump_enable.value = 1
     await _clock_cycle(dut)
     dut.jump_enable.value = 0
 
-    await _fetch_short(dut, expected_word=ROM_WORDS[4])
+    await _expect_short(dut, expected_word=ROM_WORDS[4])
 
 
 @cocotb.test()
@@ -126,14 +140,15 @@ async def stress_mixed_short_and_long_fetches(dut: Dut) -> None:
 
     # A long response repeats its previously fetched low word and supplies the
     # next ROM word as its high word. Repeat this pattern across the image.
-    await _fetch_short(dut, ROM_WORDS[0])
+    await _expect_short(dut, ROM_WORDS[0])
     await _fetch_long(dut, ROM_WORDS[0], ROM_WORDS[1])
-    await _fetch_short(dut, ROM_WORDS[2])
+    await _expect_short(dut, ROM_WORDS[2])
     await _fetch_long(dut, ROM_WORDS[2], ROM_WORDS[3])
-    await _fetch_short(dut, ROM_WORDS[4])
+    await _expect_short(dut, ROM_WORDS[4])
     await _fetch_long(dut, ROM_WORDS[4], ROM_WORDS[5])
-    await _fetch_short(dut, ROM_WORDS[6])
-    await _fetch_short(dut, ROM_WORDS[7])
+    await _expect_short(dut, ROM_WORDS[6])
+    await _accept_instruction(dut)
+    await _expect_short(dut, ROM_WORDS[7])
 
     # Return to the start and verify that the ROM/fetch pipeline was reset to
     # the requested address rather than retaining an old prefetched word.
@@ -141,7 +156,7 @@ async def stress_mixed_short_and_long_fetches(dut: Dut) -> None:
     dut.jump_enable.value = 1
     await _clock_cycle(dut)
     dut.jump_enable.value = 0
-    await _fetch_short(dut, ROM_WORDS[0])
+    await _expect_short(dut, ROM_WORDS[0])
 
 
 @cocotb.test()
@@ -151,7 +166,7 @@ async def reset_cancels_a_pending_long_fetch(dut: Dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await _reset(dut)
 
-    await _fetch_short(dut, ROM_WORDS[0])
+    await _expect_short(dut, ROM_WORDS[0])
 
     # Start a long fetch, then reset before another instruction can be used.
     dut.request_long_instruction.value = 1
@@ -165,7 +180,7 @@ async def reset_cancels_a_pending_long_fetch(dut: Dut) -> None:
 
     dut.reset.value = 0
     await _clock_cycle(dut)
-    await _fetch_short(dut, ROM_WORDS[0])
+    await _expect_short(dut, ROM_WORDS[0])
 
 
 def _runner() -> Runner:

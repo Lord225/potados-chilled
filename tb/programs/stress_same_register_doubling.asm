@@ -11,5 +11,4 @@ ADD R2, R2, R2
 ADD R2, R2, R2
 ADD R2, R2, R2
 ADD R2, R2, R2
-.space 4
 HALT

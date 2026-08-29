@@ -20,13 +20,36 @@ module potados_scoreboard (
     output register_status_t register_status
 );
     register_status_t register_status_next;
+    integer register_index;
 
     always_comb begin
-        // A newly issued instruction wins over a retiring instruction when
-        // both refer to the same register.
-        register_status_next.pending_write =
-            (register_status.pending_write & ~release_write_mask)
-            | reserve_write_mask;
+        register_status_next = register_status;
+
+        // Evaluate reservation and release independently for every register.
+        // A reservation wins when an older writeback releases the same one.
+        for (register_index = 0; register_index < 8; register_index = register_index + 1) begin
+            case ({
+                reserve_write_mask[register_index],
+                release_write_mask[register_index]
+            })
+                2'b00: begin
+                    register_status_next.pending_write[register_index] = register_status.pending_write[register_index];
+                end
+                2'b01: begin
+                    register_status_next.pending_write[register_index] = 1'b0;
+                end
+                2'b10: begin
+                    register_status_next.pending_write[register_index] = 1'b1;
+                end
+                2'b11: begin
+                    register_status_next.pending_write[register_index] = 1'b1;
+                end
+                default: begin
+                    register_status_next.pending_write[register_index] = 1'b0;
+                end
+            endcase
+        end
+
         register_status_next.pending_write[3'b000] = 1'b0;
     end
 

@@ -15,5 +15,4 @@ ADDI R2, 1
 ADDI R2, 1
 ADDI R2, 1
 ADDI R2, 1
-.space 4
 HALT
