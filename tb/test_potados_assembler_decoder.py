@@ -67,7 +67,7 @@ async def assembled_integer_and_immediate_forms_decode_correctly(dut: Dut) -> No
 @cocotb.test()
 async def assembled_memory_and_stack_forms_decode_correctly(dut: Dut) -> None:
     await _expect_decoded(dut, "LD R4, [R2 - 1]", op_primary=6, dst=4, op_secondary=7, src_a=2, src_b=4, immediate=0xFFFF)
-    await _expect_decoded(dut, "ST R3, R2, 1", op_primary=7, dst=3, op_secondary=1, src_a=2, src_b=3, immediate=1)
+    await _expect_decoded(dut, "ST R3, [ R2 + 1 ]", op_primary=7, dst=3, op_secondary=1, src_a=2, src_b=3, immediate=1)
     await _expect_decoded(dut, "LDSP R4, -1", op_primary=8, dst=4, op_secondary=7, src_a=7, src_b=4, immediate=0xFFFF)
     await _expect_decoded(dut, "STSP R3, 1", op_primary=9, dst=3, op_secondary=1, src_a=0, src_b=3, immediate=1)
     await _expect_decoded(dut, "PUSH R2", op_primary=12, dst=2, op_secondary=1, src_a=0, src_b=2)

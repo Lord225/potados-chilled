@@ -142,38 +142,50 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
             test_filter=testcase,
         )
     except SystemExit as exc:
-        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+        pytest.fail(
+            f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False
+        )
 
 
-@pytest.mark.xfail(strict=True, reason="Pipeline has no RAW hazard stall or forwarding.")
 def test_raw_alu_dependency_uses_the_previous_result(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "raw_alu_dependency_uses_the_previous_result")
 
 
-@pytest.mark.xfail(strict=True, reason="RAM responses are not carried to writeback.")
 def test_store_then_load_returns_the_stored_word(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "store_then_load_returns_the_stored_word")
 
 
-@pytest.mark.xfail(strict=True, reason="POP RAM response is not carried to writeback.")
-def test_push_then_pop_preserves_value_and_stack_pointer(edge_case_runner: Runner) -> None:
-    _run_cocotb_test(edge_case_runner, "push_then_pop_preserves_value_and_stack_pointer")
+def test_push_then_pop_preserves_value_and_stack_pointer(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "push_then_pop_preserves_value_and_stack_pointer"
+    )
 
 
-@pytest.mark.xfail(strict=True, reason="Taken jumps do not flush younger fallthrough instructions.")
-def test_unconditional_jump_discards_the_fallthrough_path(edge_case_runner: Runner) -> None:
-    _run_cocotb_test(edge_case_runner, "unconditional_jump_discards_the_fallthrough_path")
+def test_unconditional_jump_discards_the_fallthrough_path(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "unconditional_jump_discards_the_fallthrough_path"
+    )
 
 
-@pytest.mark.xfail(strict=True, reason="Taken jumps do not flush younger fallthrough instructions.")
-def test_taken_conditional_jump_discards_the_fallthrough_path(edge_case_runner: Runner) -> None:
-    _run_cocotb_test(edge_case_runner, "taken_conditional_jump_discards_the_fallthrough_path")
+def test_taken_conditional_jump_discards_the_fallthrough_path(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "taken_conditional_jump_discards_the_fallthrough_path"
+    )
 
 
-def test_not_taken_conditional_jump_keeps_the_fallthrough_path(edge_case_runner: Runner) -> None:
-    _run_cocotb_test(edge_case_runner, "not_taken_conditional_jump_keeps_the_fallthrough_path")
+def test_not_taken_conditional_jump_keeps_the_fallthrough_path(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "not_taken_conditional_jump_keeps_the_fallthrough_path"
+    )
 
 
-@pytest.mark.xfail(strict=True, reason="HALT is currently an execute-stage pulse, not sticky state.")
 def test_halt_is_sticky_until_reset(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "halt_is_sticky_until_reset")

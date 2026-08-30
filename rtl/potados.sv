@@ -130,6 +130,7 @@ module potados #(
     logic writeback_declare_stall;
     pipeline_stall_t pipeline_stall;
 
+    // TODO: Add forwording logic
     // Pipeline stage states
     execute_stage_t execute_stage;
     execute_stage_t execute_stage_next;

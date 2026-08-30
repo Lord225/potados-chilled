@@ -83,8 +83,8 @@ right operand): `DST = SRC_A op SRC_B`. Unary instructions use `SRC_B`.
 | `ADDI` | Add a 9-bit SE immediate constant to the `SDP` register. |
 | `LLI` | Load the 8 bit SE immediate into lower 8 bits of the `SDP` register and clear its upper 8 bits. |
 | `LUI` | Load the 8 bit SE immediate into higher 8 bits of the `SDP` register and clear its lower 8 bits. |
-| `LD` | Load `RAM[PTR + IMM]` into `DST`, using the 6bit SE immediate as a displacement from `PTR`. |
-| `ST` | Store `SRC` to `RAM[PTR + IMM]`, using the 6bit SE immediate as a displacement from `PTR`. |
+| `LD` | Load `RAM[PTR + IMM]` into `DST`, using the 6bit SE immediate as a displacement from `PTR`. Assembly syntax: `LD DST, [PTR + IMM]` or `LD DST, [PTR - IMM]`. |
+| `ST` | Store `SRC` to `RAM[PTR + IMM]`, using the 6bit SE immediate as a displacement from `PTR`. Assembly syntax: `ST SRC, [PTR + IMM]` or `ST SRC, [PTR - IMM]`. |
 | `LDSP` | Load `RAM[SP+IMM]` into `DST`, using the 9bit SE immediate as a displacement from `SP` register. |
 | `STSP` | Store `SRC` to `RAM[SP+IMM]`, using the 9bit SE immediate as a displacement from `SP` register. |
 | `JGE`, `JL`, `JE`, `JNE` | Jump to `IMM16` when the signed comparison is respectively greater/equal, less, equal, or not equal. |

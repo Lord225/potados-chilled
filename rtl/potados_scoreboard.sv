@@ -4,6 +4,12 @@
 `timescale 1ns / 1ns
 `include "potados_common.sv"
 
+
+// TODO: Rewrite to make it more readable & easy to work with
+// 1) All inputs explicit, let's assume 3 channels for reserve and release
+// 2) Must add memory adress reservation
+// 3) We even must consider adding two memory adresses.
+
 // Tracks architectural registers that will be written by instructions already
 // accepted into the pipeline. It is deliberately separate from the register
 // file: register values are architectural state, while this mask is pipeline

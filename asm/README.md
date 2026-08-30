@@ -72,12 +72,14 @@ Canonical memory and in-place immediate forms are:
 ```asm
 ADDI R2, -1
 ADDI R2, R2, -1       ; accepted for clarity; both registers must match
-LD   R4, R2, 3
 LD   R4, [R2 + 3]
 ST   R4, [R2 - 1]
 LDSP R4, 8
 STSP R4, -8
 ```
+
+`LD` and `ST` use a bracketed memory operand: `[PTR + IMM]` or
+`[PTR - IMM]`. Whitespace inside the brackets is optional.
 
 Direct and conditional jumps emit two words. Labels therefore automatically
 resolve to the correct word address:
