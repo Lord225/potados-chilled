@@ -10,6 +10,7 @@ import pytest
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 from cocotb_tools.runner import get_runner
+from emulator import format_pipeline
 from potados_asm import assemble_file
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,28 @@ Runner = Any
 
 def _register(register_file: int, address: int) -> int:
     return (register_file >> ((7 - address) * 16)) & 0xFFFF
+
+
+def _ram(dut: Dut, address: int) -> int:
+    return int(dut.potados_memory.ram_inst.memory[address].value)
+
+
+def _dump_registers(dut: Dut) -> str:
+    registers = int(dut.registers_out.value)
+    out = []
+    for i in range(8):
+        out.append(f"R{i}={_register(registers, i):04X}")
+    return ",".join(out)
+
+
+def _dump_pipeline(dut: Dut) -> str:
+    return format_pipeline(
+        int(dut.execute_stage_next.value),
+        int(dut.execute_stage.value),
+        int(dut.memory_stage.value),
+        int(dut.writeback_stage.value),
+        ram_load_data=int(dut.ram_load_data.value),
+    )
 
 
 def _load_program(dut: Dut, program: str) -> None:
@@ -46,6 +69,14 @@ async def _run_until_halt(dut: Dut, *, maximum_cycles: int = 96) -> None:
     for _ in range(maximum_cycles):
         await RisingEdge(dut.clk)
         await Timer(1, unit="ns")
+        dut._log.info(
+            "Cycle %d: HALT=%d, Registers=%s, Ram[16]=%04X\n%s",
+            _,
+            int(dut.halt_out.value),
+            _dump_registers(dut),
+            _ram(dut, 16),
+            _dump_pipeline(dut),
+        )
         if int(dut.halt_out.value):
             return
     raise AssertionError(f"CPU did not reach HALT within {maximum_cycles} cycles")
@@ -65,6 +96,47 @@ async def store_then_load_returns_the_stored_word(dut: Dut) -> None:
     await _reset(dut, "edge_store_load.asm")
     await _run_until_halt(dut)
     assert _register(int(dut.registers_out.value), 0b100) == 0x00A5
+
+
+@cocotb.test()
+async def back_to_back_memory_operations_preserve_load_alignment(dut: Dut) -> None:
+    """Adjacent RAM requests retain address/data alignment across WB_MEMORY."""
+    await _reset(dut, "edge_memory_back_to_back.asm")
+    await _run_until_halt(dut)
+
+    registers = int(dut.registers_out.value)
+    assert _ram(dut, 32) == 0x0011
+    assert _ram(dut, 95) == 0x00A5
+    assert _register(registers, 0b101) == 0x0011
+    assert _register(registers, 0b110) == 0x00A5
+    assert _register(registers, 0b111) == 0x0011
+
+
+@cocotb.test()
+async def alternating_store_loads_at_one_address_return_each_new_value(
+    dut: Dut,
+) -> None:
+    """Each LD observes the preceding adjacent ST at the same RAM address."""
+    await _reset(dut, "edge_memory_alternating_same_address.asm")
+
+    observed_r6: list[int] = []
+    previous_r6 = _register(int(dut.registers_out.value), 0b110)
+    for _ in range(96):
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        current_r6 = _register(int(dut.registers_out.value), 0b110)
+        if current_r6 != previous_r6:
+            observed_r6.append(current_r6)
+            previous_r6 = current_r6
+        if int(dut.halt_out.value):
+            break
+    else:
+        raise AssertionError("CPU did not reach HALT within 96 cycles")
+
+    registers = int(dut.registers_out.value)
+    assert _ram(dut, 64) == 0x0056
+    assert observed_r6 == [0x0012, 0x0056]
+    assert _register(registers, 0b111) == 0x0034
 
 
 @cocotb.test()
@@ -153,6 +225,23 @@ def test_raw_alu_dependency_uses_the_previous_result(edge_case_runner: Runner) -
 
 def test_store_then_load_returns_the_stored_word(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "store_then_load_returns_the_stored_word")
+
+
+def test_back_to_back_memory_operations_preserve_load_alignment(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "back_to_back_memory_operations_preserve_load_alignment"
+    )
+
+
+def test_alternating_store_loads_at_one_address_return_each_new_value(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner,
+        "alternating_store_loads_at_one_address_return_each_new_value",
+    )
 
 
 def test_push_then_pop_preserves_value_and_stack_pointer(

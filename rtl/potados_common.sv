@@ -248,7 +248,6 @@ typedef struct packed {
 
     // from memory stage
     logic [15:0] alu_result;
-    logic [15:0] memory_write_data;
     logic [15:0] fpu_result;
     logic [15:0] next_pc;
 

@@ -18,7 +18,6 @@ module potados_memory_stage(
     output logic        ram_store_enable,
     output logic [15:0] ram_store_data,
     output logic        ram_load_enable,
-    input  logic [15:0] ram_load_data,
     
     output writeback_stage_t writeback_stage,
     output logic should_stall
@@ -33,7 +32,6 @@ module potados_memory_stage(
         writeback_stage = '0;
         writeback_stage.valid = memory_stage.valid;
         writeback_stage.alu_result = memory_stage.alu_result;
-        writeback_stage.memory_write_data = memory_stage.memory_write_data;
         writeback_stage.fpu_result = memory_stage.fpu_result;
         writeback_stage.next_pc = memory_stage.next_pc;
         writeback_stage.dst = memory_stage.dst;
@@ -45,6 +43,7 @@ endmodule
 
 module potados_writeback_stage(
     input writeback_stage_t writeback_stage,
+    input logic [15:0] ram_load_data,
 
     output register_write_request_t register_write_request,
     output stack_pointer_request_t  stack_pointer_request
@@ -60,7 +59,7 @@ module potados_writeback_stage(
             WB_NONE: register_write_request.write_data = '0;
             WB_ALU:  register_write_request.write_data = writeback_stage.alu_result;
             WB_FPU:  register_write_request.write_data = writeback_stage.fpu_result;
-            WB_MEMORY:  register_write_request.write_data = writeback_stage.memory_write_data;
+            WB_MEMORY:  register_write_request.write_data = ram_load_data;
             WB_RETURN_ADDRESS:   register_write_request.write_data = writeback_stage.next_pc;
             default: register_write_request.write_data = '0;
         endcase
@@ -230,7 +229,6 @@ module potados #(
         .ram_store_enable(ram_store_enable),
         .ram_store_data(ram_store_data),
         .ram_load_enable(ram_load_enable),
-        .ram_load_data(ram_load_data),
 
         .writeback_stage(writeback_stage_next),
         .should_stall(memory_declare_stall)
@@ -239,7 +237,8 @@ module potados #(
     potados_writeback_stage writeback_stage_inst (
         .writeback_stage(writeback_stage),
         .register_write_request(register_write_request),
-        .stack_pointer_request(stack_pointer_request)
+        .stack_pointer_request(stack_pointer_request),
+        .ram_load_data(ram_load_data)
     );
 
     potados_registers registers_inst (
@@ -365,7 +364,7 @@ module potados #(
         fetch_high_word_request = 1'b0;
         fetched_instruction_accepted = 1'b0;
 
-        if (fetched_instruction_valid && halt == 1'b0) begin
+        if (fetched_instruction_valid && !halt) begin
             if (decoded_instruction.is_long && decoded_instruction.partialy_decoded) begin
                 fetch_high_word_request = 1'b1;
             end else if (decode_accept) begin

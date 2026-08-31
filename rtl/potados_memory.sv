@@ -150,95 +150,103 @@ module potados_program_memory #(
             pc_next = jump_address;
             fetch_state_next = FETCH_START_SHORT;
         end else begin
-            case (fetch_state)
-                // Entry point for the fetch
-                FETCH_START_SHORT: begin
-                    // The ROM samples the current PC on this clock edge.
-                    // Advance PC for the following sequential fetch.
-                    pc_next = pc + 16'h0001;
-                    fetch_state_next = FETCH_SHORT_RESPONSE;
-                end
-                // Fetch short instruction and cerry to next one
-                FETCH_SHORT_RESPONSE: begin
-                    low_instruction = rom_data;
-                    instruction_pc = pc - 16'h0001;
-                    low_valid = 1'b1;
-                    if (request_long_instruction) begin
-                        // Decode consumed the low word and identified a long instruction.
-                        rom_data_prev_next = rom_data;
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_LONG_RESPONSE;
-                    end else if (instruction_accepted) begin
-                        // Decode consumed a complete short instruction.
+            if (halt) begin
+                fetch_state_next = HALTED;
+                low_instruction = 16'h0000;
+                high_instruction = 16'h0000;
+                instruction_pc = pc - 16'h0001;
+                low_valid = 1'b0;
+                high_valid = 1'b0;
+                halted = 1'b1;
+            end else begin
+                case (fetch_state)
+                    // Entry point for the fetch
+                    FETCH_START_SHORT: begin
+                        // The ROM samples the current PC on this clock edge.
+                        // Advance PC for the following sequential fetch.
                         pc_next = pc + 16'h0001;
                         fetch_state_next = FETCH_SHORT_RESPONSE;
-                    end else if (halt) begin
-                        // Decode has requested a halt.  Stop fetching instructions.
+                    end
+                    // Fetch short instruction and cerry to next one
+                    FETCH_SHORT_RESPONSE: begin
+                        low_instruction = rom_data;
+                        instruction_pc = pc - 16'h0001;
+                        low_valid = 1'b1;
+                        if (request_long_instruction) begin
+                            // Decode consumed the low word and identified a long instruction.
+                            rom_data_prev_next = rom_data;
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_LONG_RESPONSE;
+                        end else if (instruction_accepted) begin
+                            // Decode consumed a complete short instruction.
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_SHORT_RESPONSE;
+                        end else begin
+                            // The registered ROM will present its next output on
+                            // the next clock, so retain this response while decode
+                            // is stalled.
+                            rom_data_prev_next = rom_data;
+                            fetch_state_next = FETCH_SHORT_HELD;
+                        end
+                    end
+                    // If instruction was not accepted, we need to hold it until it is.
+                    FETCH_SHORT_HELD: begin
+                        low_instruction = rom_data_prev;
+                        instruction_pc = pc - 16'h0001;
+                        low_valid = 1'b1;
+                        if (request_long_instruction) begin
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_LONG_RESPONSE;
+                        end else if (instruction_accepted) begin
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_SHORT_RESPONSE;
+                        end
+                    end
+                    // We need to fetch the next word of a long instruction
+                    // The ROM samples the current PC on this clock edge. and advances the PC
+                    FETCH_LONG_RESPONSE: begin
+                        low_instruction = rom_data_prev;
+                        high_instruction = rom_data;
+                        instruction_pc = pc - 16'h0002;
+                        low_valid = 1'b1;
+                        high_valid = 1'b1;
+                        if (instruction_accepted) begin
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_SHORT_RESPONSE;
+                        end else if (halt) begin
+                            // Decode has requested a halt.  Stop fetching instructions.
+                            fetch_state_next = HALTED;
+                        end else begin
+                            rom_data_high_prev_next = rom_data;
+                            fetch_state_next = FETCH_LONG_HELD;
+                        end
+                    end
+                    // If instruction was not accepted we need to hold it until it is.
+                    FETCH_LONG_HELD: begin
+                        low_instruction = rom_data_prev;
+                        high_instruction = rom_data_high_prev;
+                        instruction_pc = pc - 16'h0002;
+                        low_valid = 1'b1;
+                        high_valid = 1'b1;
+                        if (instruction_accepted) begin
+                            pc_next = pc + 16'h0001;
+                            fetch_state_next = FETCH_SHORT_RESPONSE;
+                        end
+                    end
+                    HALTED: begin
+                        low_instruction = 16'h0000;
+                        high_instruction = 16'h0000;
+                        instruction_pc = pc - 16'h0001;
+                        low_valid = 1'b0;
+                        high_valid = 1'b0;
+                        halted = 1'b1;
                         fetch_state_next = HALTED;
-                    end else begin
-                        // The registered ROM will present its next output on
-                        // the next clock, so retain this response while decode
-                        // is stalled.
-                        rom_data_prev_next = rom_data;
-                        fetch_state_next = FETCH_SHORT_HELD;
                     end
-                end
-                // If instruction was not accepted, we need to hold it until it is.
-                FETCH_SHORT_HELD: begin
-                    low_instruction = rom_data_prev;
-                    instruction_pc = pc - 16'h0001;
-                    low_valid = 1'b1;
-                    if (request_long_instruction) begin
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_LONG_RESPONSE;
-                    end else if (instruction_accepted) begin
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_SHORT_RESPONSE;
+                    default: begin
+                        fetch_state_next = FETCH_START_SHORT;
                     end
-                end
-                // We need to fetch the next word of a long instruction
-                // The ROM samples the current PC on this clock edge. and advances the PC
-                FETCH_LONG_RESPONSE: begin
-                    low_instruction = rom_data_prev;
-                    high_instruction = rom_data;
-                    instruction_pc = pc - 16'h0002;
-                    low_valid = 1'b1;
-                    high_valid = 1'b1;
-                    if (instruction_accepted) begin
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_SHORT_RESPONSE;
-                    end else if (halt) begin
-                        // Decode has requested a halt.  Stop fetching instructions.
-                        fetch_state_next = HALTED;
-                    end else begin
-                        rom_data_high_prev_next = rom_data;
-                        fetch_state_next = FETCH_LONG_HELD;
-                    end
-                end
-                // If instruction was not accepted we need to hold it until it is.
-                FETCH_LONG_HELD: begin
-                    low_instruction = rom_data_prev;
-                    high_instruction = rom_data_high_prev;
-                    instruction_pc = pc - 16'h0002;
-                    low_valid = 1'b1;
-                    high_valid = 1'b1;
-                    if (instruction_accepted) begin
-                        pc_next = pc + 16'h0001;
-                        fetch_state_next = FETCH_SHORT_RESPONSE;
-                    end
-                end
-                HALTED: begin
-                    low_instruction = 16'h0000;
-                    high_instruction = 16'h0000;
-                    instruction_pc = pc - 16'h0001;
-                    low_valid = 1'b0;
-                    high_valid = 1'b0;
-                    halted = 1'b1;
-                end
-                default: begin
-                    fetch_state_next = FETCH_START_SHORT;
-                end
-            endcase
+                endcase
+            end
         end
     end
     
