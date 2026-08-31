@@ -30,7 +30,7 @@ PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
         ("SNE R4, R2, R3", [0x18D3]),
         ("SAE R4, R2, R3", [0x1913]),
         ("SB R4, R2, R3", [0x1953]),
-        ("SH R2, R2, -1", [0x2FD2]),
+        ("SH R2, R2, -1", [0x27D2]),
         ("ASH R2, R2, 1", [0x3052]),
         ("ADDI R3, -1", [0x4FFB]),
         ("LLI R2, 0xA5", [0x5952]),
@@ -66,6 +66,47 @@ PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
 def test_instruction_golden_encodings(source: str, expected: list[int]) -> None:
     result = assemble(source, filename="golden.asm")
     assert result.dense_words() == expected
+
+
+def test_regular_register_fields_are_visible_in_the_encoded_word() -> None:
+    word = assemble("SUB R4, R2, R3", filename="fields.asm").dense_words()[0]
+
+    assert (word >> 12) & 0b1111 == 0b0000  # primary opcode: integer ALU
+    assert (word >> 9) & 0b111 == 0b100     # destination: R4
+    assert (word >> 6) & 0b111 == 0b010     # function: SUB
+    assert (word >> 3) & 0b111 == 0b010     # source A: R2
+    assert word & 0b111 == 0b011            # source B: R3
+
+
+def test_irregular_immediate_fields_are_encoded_explicitly() -> None:
+    shift = assemble("SH R2, R3, -1", filename="fields.asm").dense_words()[0]
+    assert (shift >> 12) & 0b1111 == 0b0010
+    assert (shift >> 11) & 1 == 0            # reserved bit
+    assert (shift >> 6) & 0b1_1111 == 0b1_1111  # signed IMM5: -1
+    assert (shift >> 3) & 0b111 == 0b011     # source: R3
+    assert shift & 0b111 == 0b010            # destination: R2
+
+    addi = assemble("ADDI R3, -1", filename="fields.asm").dense_words()[0]
+    assert (addi >> 6) & 0b11_1111 == 0b11_1111  # IMM9[5:0]
+    assert (addi >> 3) & 0b111 == 0b111           # IMM9[8:6]
+    assert addi & 0b111 == 0b011                  # source/destination: R3
+
+    lui = assemble("LUI R2, 0xA5", filename="fields.asm").dense_words()[0]
+    assert (lui >> 6) & 0b11_1111 == 0b10_0101  # immediate[5:0]
+    assert (lui >> 5) & 1 == 1                  # upper-byte selector
+    assert (lui >> 3) & 0b11 == 0b10            # immediate[7:6]
+    assert lui & 0b111 == 0b010                 # destination: R2
+
+
+def test_long_jump_encodes_the_target_as_a_separate_word() -> None:
+    instruction, target = assemble(
+        "JAL R5, 0x1234", filename="fields.asm"
+    ).dense_words()
+
+    assert (instruction >> 12) & 0b1111 == 0b1011
+    assert (instruction >> 6) & 0b111 == 0b010  # JAL function
+    assert instruction & 0b111 == 0b101         # link destination: R5
+    assert target == 0x1234
 
 
 def test_long_jumps_and_labels_use_word_addresses() -> None:
@@ -170,6 +211,8 @@ def test_cpu_program_sources_assemble(program: Path) -> None:
     ("source", "message"),
     [
         ("ADDI R2, 256", "immediate out of range"),
+        ("SH R2, R2, -17", "shift amount out of range [-16..15]"),
+        ("SH R2, R2, 16", "shift amount out of range [-16..15]"),
         ("LD R2, R3, -33", "displacement out of range"),
         ("JMP nowhere", "undefined symbol 'nowhere'"),
         ("same: NOP\nsame: HALT", "already defined"),

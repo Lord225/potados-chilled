@@ -9,70 +9,9 @@
 `include "potados_alu.sv"
 `include "potados_memory.sv"
 `include "potados_execute.sv"
+`include "potados_memory_stage.sv"
+`include "potados_wb_stage.sv"
 
-
-module potados_memory_stage(
-    input memory_stage_t memory_stage,
-
-    output logic [15:0] ram_address,
-    output logic        ram_store_enable,
-    output logic [15:0] ram_store_data,
-    output logic        ram_load_enable,
-    
-    output writeback_stage_t writeback_stage,
-    output logic should_stall
-);
-
-    always_comb begin
-        ram_address = memory_stage.alu_result;
-        ram_store_enable = memory_stage.valid && (memory_stage.memory_op == MEMORY_STORE);
-        ram_store_data = memory_stage.memory_write_data;
-        ram_load_enable = memory_stage.valid && (memory_stage.memory_op == MEMORY_LOAD);
-
-        writeback_stage = '0;
-        writeback_stage.valid = memory_stage.valid;
-        writeback_stage.alu_result = memory_stage.alu_result;
-        writeback_stage.fpu_result = memory_stage.fpu_result;
-        writeback_stage.next_pc = memory_stage.next_pc;
-        writeback_stage.dst = memory_stage.dst;
-        writeback_stage.stack_pointer_op = memory_stage.stack_pointer_op;
-        writeback_stage.writeback_source = memory_stage.writeback_source;
-        should_stall = 1'b0;
-    end
-endmodule
-
-module potados_writeback_stage(
-    input writeback_stage_t writeback_stage,
-    input logic [15:0] ram_load_data,
-
-    output register_write_request_t register_write_request,
-    output stack_pointer_request_t  stack_pointer_request
-);
-    always_comb begin
-        // Should write sth to register in this cycle?
-        register_write_request.write_enable = writeback_stage.valid && (writeback_stage.writeback_source != WB_NONE);
-        // Which register to write to?
-        register_write_request.write_address = writeback_stage.dst;
-
-        // Choose data based on requested writeback source. If the source is WB_NONE, the data is ignored.
-        case (writeback_stage.writeback_source)
-            WB_NONE: register_write_request.write_data = '0;
-            WB_ALU:  register_write_request.write_data = writeback_stage.alu_result;
-            WB_FPU:  register_write_request.write_data = writeback_stage.fpu_result;
-            WB_MEMORY:  register_write_request.write_data = ram_load_data;
-            WB_RETURN_ADDRESS:   register_write_request.write_data = writeback_stage.next_pc;
-            default: register_write_request.write_data = '0;
-        endcase
-
-        if (writeback_stage.stack_pointer_op == STACK_POINTER_NONE) begin
-            stack_pointer_request.operation = STACK_POINTER_NONE;
-            stack_pointer_request.write_data = '0; // TODO
-        end else begin
-            stack_pointer_request.operation = writeback_stage.stack_pointer_op;
-            stack_pointer_request.write_data = '0; // TODO
-        end 
-    end
-endmodule
 
 module potados #(
     parameter ROM_FILE = "rom.hex",
@@ -238,7 +177,8 @@ module potados #(
         .writeback_stage(writeback_stage),
         .register_write_request(register_write_request),
         .stack_pointer_request(stack_pointer_request),
-        .ram_load_data(ram_load_data)
+        .ram_load_data(ram_load_data),
+        .writeback_declare_stall(writeback_declare_stall)
     );
 
     potados_registers registers_inst (

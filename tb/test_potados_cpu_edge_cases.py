@@ -150,6 +150,35 @@ async def push_then_pop_preserves_value_and_stack_pointer(dut: Dut) -> None:
 
 
 @cocotb.test()
+async def dense_stack_program_is_lifo_and_supports_sp_relative_memory(
+    dut: Dut,
+) -> None:
+    """Adjacent stack operations must preserve order and restore SP exactly."""
+    await _reset(dut, "edge_stack_dense_lifo.asm")
+    await _run_until_halt(dut, maximum_cycles=192)
+
+    registers = int(dut.registers_out.value)
+    assert _register(registers, 0b001) == 0x0020
+    assert _register(registers, 0b100) == 0x0022
+    assert _register(registers, 0b101) == 0x0011
+    assert _register(registers, 0b111) == 0x00A5
+    assert _ram(dut, 0x20) == 0x0011
+    assert _ram(dut, 0x21) == 0x0022
+    assert _ram(dut, 0x1F) == 0x00A5
+
+
+@cocotb.test()
+async def recursive_fibonacci_restores_every_stack_frame(dut: Dut) -> None:
+    """fib(6) stresses nested calls, return addresses, and dense PUSH/POP hazards."""
+    await _reset(dut, "edge_recursive_fibonacci.asm")
+    await _run_until_halt(dut, maximum_cycles=1024)
+
+    registers = int(dut.registers_out.value)
+    assert _register(registers, 0b001) == 0x0040
+    assert _register(registers, 0b010) == 8
+
+
+@cocotb.test()
 async def unconditional_jump_discards_the_fallthrough_path(dut: Dut) -> None:
     """JMP must execute its target, not an already fetched fallthrough HALT."""
     await _reset(dut, "edge_jump_unconditional.asm")
@@ -249,6 +278,23 @@ def test_push_then_pop_preserves_value_and_stack_pointer(
 ) -> None:
     _run_cocotb_test(
         edge_case_runner, "push_then_pop_preserves_value_and_stack_pointer"
+    )
+
+
+def test_dense_stack_program_is_lifo_and_supports_sp_relative_memory(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner,
+        "dense_stack_program_is_lifo_and_supports_sp_relative_memory",
+    )
+
+
+def test_recursive_fibonacci_restores_every_stack_frame(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "recursive_fibonacci_restores_every_stack_frame"
     )
 
 

@@ -146,9 +146,9 @@ async def decode_stage_prepares_alu_compare_and_shift(dut: Dut) -> None:
         alu_op=0b01010, cmp_op=0b0100, writeback_source=0b001,
     )
 
-    # SH R2, -1; the shift amount is the decoded signed IMM6.
+    # SH R2, -1; the shift amount is the decoded signed IMM5.
     await _expect_execute_stage(
-        dut, 0b0010_111111_010_010,
+        dut, 0b0010_011111_010_010,
         operand_a=0x1234, operand_b=0xFFFF, dst=0b010,
         alu_op=0b01000, writeback_source=0b001,
     )

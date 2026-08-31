@@ -293,7 +293,9 @@ class ExpressionParser:
             argument = self._parse_additive()
             self._expect("RPAREN")
             return FunctionExpr(percent, lowered, argument)
-        raise AssemblerError(token.file, token.line, token.column, "expected expression")
+        raise AssemblerError(
+            token.file, token.line, token.column, "expected expression"
+        )
 
     def _peek(self) -> Token | None:
         return self.tokens[self.position] if self.position < len(self.tokens) else None
@@ -316,7 +318,9 @@ class ExpressionParser:
     def _expect(self, kind: str) -> Token:
         token = self._peek_required()
         if token.kind != kind:
-            raise AssemblerError(token.file, token.line, token.column, f"expected {kind.lower()}")
+            raise AssemblerError(
+                token.file, token.line, token.column, f"expected {kind.lower()}"
+            )
         self.position += 1
         return token
 
@@ -420,10 +424,14 @@ def _split_operands(tokens: Sequence[Token]) -> list[Operand]:
         elif token.kind in {"RPAREN", "RBRACKET"}:
             depth -= 1
             if depth < 0:
-                raise AssemblerError(token.file, token.line, token.column, "unmatched closing delimiter")
+                raise AssemblerError(
+                    token.file, token.line, token.column, "unmatched closing delimiter"
+                )
         if token.kind == "COMMA" and depth == 0:
             if not current:
-                raise AssemblerError(token.file, token.line, token.column, "missing operand before comma")
+                raise AssemblerError(
+                    token.file, token.line, token.column, "missing operand before comma"
+                )
             result.append(Operand(current))
             current = []
         else:
@@ -461,10 +469,20 @@ def parse_source(source: str, filename: str) -> list[Statement]:
             position += 1
         if position >= len(tokens):
             token = tokens[-1]
-            raise AssemblerError(token.file, token.line, token.column, "expected directive name after '.'")
+            raise AssemblerError(
+                token.file,
+                token.line,
+                token.column,
+                "expected directive name after '.'",
+            )
         if tokens[position].kind != "IDENT":
             token = tokens[position]
-            raise AssemblerError(token.file, token.line, token.column, "expected instruction or directive")
+            raise AssemblerError(
+                token.file,
+                token.line,
+                token.column,
+                "expected instruction or directive",
+            )
         name_token = tokens[position]
         position += 1
         lowered = name_token.text.lower()
@@ -514,7 +532,10 @@ def evaluate(expression: Expr, symbols: Mapping[str, int], current_address: int)
         if expression.name == "rel":
             return value - current_address
     raise AssemblerError(
-        expression.token.file, expression.token.line, expression.token.column, "invalid expression"
+        expression.token.file,
+        expression.token.line,
+        expression.token.column,
+        "invalid expression",
     )
 
 
@@ -524,11 +545,15 @@ REGISTER_ALIASES = {"zero": 0, "sp": 1, **{f"r{index}": index for index in range
 def _register(operand: Operand, description: str) -> int:
     if len(operand.tokens) != 1 or operand.tokens[0].kind != "IDENT":
         token = operand.first()
-        raise AssemblerError(token.file, token.line, token.column, f"{description} must be a register")
+        raise AssemblerError(
+            token.file, token.line, token.column, f"{description} must be a register"
+        )
     token = operand.tokens[0]
     name = token.text.lower()
     if name not in REGISTER_ALIASES:
-        raise AssemblerError(token.file, token.line, token.column, f"invalid register '{token.text}'")
+        raise AssemblerError(
+            token.file, token.line, token.column, f"invalid register '{token.text}'"
+        )
     return REGISTER_ALIASES[name]
 
 
@@ -548,7 +573,12 @@ def _signed(value: int, bits: int, token: Token, description: str) -> int:
     minimum = -(1 << (bits - 1))
     maximum = (1 << (bits - 1)) - 1
     if not minimum <= value <= maximum:
-        raise AssemblerError(token.file, token.line, token.column, f"{description} out of range [{minimum}..{maximum}]")
+        raise AssemblerError(
+            token.file,
+            token.line,
+            token.column,
+            f"{description} out of range [{minimum}..{maximum}]",
+        )
     return value & ((1 << bits) - 1)
 
 
@@ -556,14 +586,24 @@ def _bit_pattern(value: int, bits: int, token: Token, description: str) -> int:
     minimum = -(1 << (bits - 1))
     maximum = (1 << bits) - 1
     if not minimum <= value <= maximum:
-        raise AssemblerError(token.file, token.line, token.column, f"{description} out of range [{minimum}..{maximum}]")
+        raise AssemblerError(
+            token.file,
+            token.line,
+            token.column,
+            f"{description} out of range [{minimum}..{maximum}]",
+        )
     return value & maximum
 
 
 def _unsigned(value: int, bits: int, token: Token, description: str) -> int:
     maximum = (1 << bits) - 1
     if not 0 <= value <= maximum:
-        raise AssemblerError(token.file, token.line, token.column, f"{description} out of range [0..{maximum}]")
+        raise AssemblerError(
+            token.file,
+            token.line,
+            token.column,
+            f"{description} out of range [0..{maximum}]",
+        )
     return value
 
 
@@ -571,24 +611,36 @@ def _value(operand: Operand, symbols: Mapping[str, int], address: int) -> int:
     return evaluate(operand.expression(), symbols, address)
 
 
-def _rrr(
-    primary: int, destination: int, secondary: int, source_a: int, source_b: int
+def _encode_register_fields(
+    *, opcode: int, destination: int, function: int, source_a: int, source_b: int
 ) -> int:
+    """Encode the regular ``opcode/dst/function/src_a/src_b`` instruction form."""
     return (
-        (primary << 12)
-        | (destination << 9)
-        | (secondary << 6)
-        | (source_a << 3)
-        | source_b
+        (opcode & 0b1111) << 12       # [15:12] primary opcode
+        | (destination & 0b111) << 9  # [11:9]  destination register
+        | (function & 0b111) << 6     # [8:6]   secondary opcode
+        | (source_a & 0b111) << 3     # [5:3]   left source register
+        | (source_b & 0b111)          # [2:0]   right source register
     )
 
 
-def _immediate_9(primary: int, immediate: int, register: int) -> int:
+def _encode_split_immediate_9(*, opcode: int, immediate: int, register: int) -> int:
+    """Encode the split IMM9 used by ADDI, LDSP, and STSP.
+
+    The ISA places the low six immediate bits above the high three bits::
+
+        15          12 11             6 5          3 2          0
+        +-------------+----------------+------------+------------+
+        |   opcode    | immediate[5:0] | imm[8:6]   | register   |
+        +-------------+----------------+------------+------------+
+    """
+    immediate_low = immediate & 0b11_1111
+    immediate_high = (immediate >> 6) & 0b111
     return (
-        primary << 12
-        | (immediate & 0x3F) << 6
-        | ((immediate >> 6) & 0x7) << 3
-        | register
+        (opcode & 0b1111) << 12
+        | immediate_low << 6
+        | immediate_high << 3
+        | (register & 0b111)
     )
 
 
@@ -610,14 +662,21 @@ def _memory_operand(operand: Operand) -> tuple[int, Operand]:
         return pointer, Operand([zero])
     if remainder[0].kind not in {"PLUS", "MINUS"}:
         token = remainder[0]
-        raise AssemblerError(token.file, token.line, token.column, "expected '+' or '-' after memory pointer")
+        raise AssemblerError(
+            token.file,
+            token.line,
+            token.column,
+            "expected '+' or '-' after memory pointer",
+        )
     if remainder[0].kind == "MINUS":
         remainder = [remainder[0], *remainder[1:]]
     else:
         remainder = remainder[1:]
     if not remainder:
         token = tokens[-1]
-        raise AssemblerError(token.file, token.line, token.column, "missing memory displacement")
+        raise AssemblerError(
+            token.file, token.line, token.column, "missing memory displacement"
+        )
     return pointer, Operand(list(remainder))
 
 
@@ -628,178 +687,319 @@ FPU_SECONDARY = {"FADD": 1, "FSUB": 2, "FMUL": 3, "FDIV": 4}
 FPU_UNARY_SECONDARY = {"ITOF": 5, "FTOI": 6, "FTOU": 7}
 
 
-def encode_instruction(
+def _encode_binary_register_instruction(
+    instruction: Instruction, *, opcode: int, function: int
+) -> list[int]:
+    """Encode ``MNEMONIC destination, source_a, source_b``."""
+    _require_operands(instruction, 3)
+    destination, source_a, source_b = instruction.operands
+    return [
+        _encode_register_fields(
+            opcode=opcode,
+            destination=_register(destination, "destination"),
+            function=function,
+            source_a=_register(source_a, "left source"),
+            source_b=_register(source_b, "right source"),
+        )
+    ]
+
+
+def _encode_not_instruction(instruction: Instruction) -> list[int]:
+    """Encode ``NOT destination, source``; the unused source-A field is zero."""
+    _require_operands(instruction, 2)
+    destination, source = instruction.operands
+    return [
+        _encode_register_fields(
+            opcode=0b0000,
+            destination=_register(destination, "destination"),
+            function=0b110,
+            source_a=0,
+            source_b=_register(source, "source"),
+        )
+    ]
+
+
+def _encode_shift_instruction(
     instruction: Instruction, symbols: Mapping[str, int], address: int
 ) -> list[int]:
-    mnemonic = instruction.mnemonic
-    operands = instruction.operands
-    if mnemonic == "NOP":
-        _require_operands(instruction, 0)
-        return [0x0000]
-    if mnemonic in ALU_SECONDARY or mnemonic in SET_SECONDARY:
-        _require_operands(instruction, 3)
-        destination = _register(operands[0], "destination")
-        source_a = _register(operands[1], "left source")
-        source_b = _register(operands[2], "right source")
-        primary = 0 if mnemonic in ALU_SECONDARY else 1
-        secondary = (ALU_SECONDARY | SET_SECONDARY)[mnemonic]
-        return [_rrr(primary, destination, secondary, source_a, source_b)]
-    if mnemonic == "NOT":
-        _require_operands(instruction, 2)
-        return [
-            _rrr(
-                0,
-                _register(operands[0], "destination"),
-                6,
-                0,
-                _register(operands[1], "source"),
-            )
-        ]
-    if mnemonic in {"SH", "ASH"}:
-        _require_operands(instruction, 3)
-        destination = _register(operands[0], "destination")
-        source = _register(operands[1], "source")
-        immediate = _signed(
-            _value(operands[2], symbols, address),
-            6,
-            operands[2].first(),
-            "shift amount",
-        )
-        return [
-            ((2 if mnemonic == "SH" else 3) << 12)
-            | (immediate << 6)
-            | (source << 3)
-            | destination
-        ]
-    if mnemonic == "ADDI":
-        _require_operands(instruction, {2, 3})
-        destination = _register(operands[0], "source/destination")
-        immediate_operand = operands[-1]
-        if len(operands) == 3 and _register(operands[1], "source") != destination:
-            token = operands[1].first()
+    """Encode the shift-specific ``opcode/0/IMM5/source/destination`` form."""
+    _require_operands(instruction, 3)
+    destination_operand, source_operand, immediate_operand = instruction.operands
+    immediate = _signed(
+        _value(immediate_operand, symbols, address),
+        5,
+        immediate_operand.first(),
+        "shift amount",
+    )
+    opcode = 0b0010 if instruction.mnemonic == "SH" else 0b0011
+    word = (
+        opcode << 12
+        | 0 << 11                              # [11]    reserved, always zero
+        | (immediate & 0b1_1111) << 6          # [10:6]  signed shift amount
+        | _register(source_operand, "source") << 3  # [5:3] source register
+        | _register(destination_operand, "destination")  # [2:0] destination
+    )
+    return [word]
+
+
+def _encode_addi_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode ``ADDI register, [same_register,] immediate``."""
+    _require_operands(instruction, {2, 3})
+    destination = _register(instruction.operands[0], "source/destination")
+    immediate_operand = instruction.operands[-1]
+
+    if len(instruction.operands) == 3:
+        source_operand = instruction.operands[1]
+        if _register(source_operand, "source") != destination:
+            token = source_operand.first()
             raise AssemblerError(
                 token.file,
                 token.line,
                 token.column,
                 "ADDI source and destination must be the same register",
             )
-        immediate = _signed(
-            _value(immediate_operand, symbols, address),
-            9,
-            immediate_operand.first(),
-            "immediate",
+
+    immediate = _signed(
+        _value(immediate_operand, symbols, address),
+        9,
+        immediate_operand.first(),
+        "immediate",
+    )
+    return [
+        _encode_split_immediate_9(
+            opcode=0b0100, immediate=immediate, register=destination
         )
-        return [_immediate_9(4, immediate, destination)]
+    ]
+
+
+def _encode_load_immediate_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode LLI/LUI's split byte and its selector bit."""
+    _require_operands(instruction, 2)
+    destination_operand, immediate_operand = instruction.operands
+    destination = _register(destination_operand, "destination")
+    immediate = _bit_pattern(
+        _value(immediate_operand, symbols, address),
+        8,
+        immediate_operand.first(),
+        "immediate",
+    )
+    upper_byte = int(instruction.mnemonic == "LUI")
+    return [
+        0b0101 << 12
+        | (immediate & 0b11_1111) << 6  # [11:6] immediate[5:0]
+        | upper_byte << 5               # [5]    0 = LLI, 1 = LUI
+        | ((immediate >> 6) & 0b11) << 3  # [4:3] immediate[7:6]
+        | destination                   # [2:0] destination register
+    ]
+
+
+def _encode_base_memory_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode ``LD/ST data_register, [pointer + displacement]``."""
+    _require_operands(instruction, {2, 3})
+    data_operand = instruction.operands[0]
+    data_description = "destination" if instruction.mnemonic == "LD" else "source"
+    data_register = _register(data_operand, data_description)
+
+    if len(instruction.operands) == 2:
+        pointer, displacement_operand = _memory_operand(instruction.operands[1])
+    else:
+        pointer = _register(instruction.operands[1], "pointer")
+        displacement_operand = instruction.operands[2]
+
+    displacement = _signed(
+        _value(displacement_operand, symbols, address),
+        6,
+        displacement_operand.first(),
+        "displacement",
+    )
+    opcode = 0b0110 if instruction.mnemonic == "LD" else 0b0111
+    return [
+        opcode << 12
+        | displacement << 6  # [11:6] signed displacement
+        | pointer << 3       # [5:3] pointer register
+        | data_register      # [2:0] load destination / store source
+    ]
+
+
+def _encode_stack_memory_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode LDSP/STSP using the same split IMM9 layout as ADDI."""
+    _require_operands(instruction, 2)
+    register_operand, immediate_operand = instruction.operands
+    register_description = (
+        "destination" if instruction.mnemonic == "LDSP" else "source"
+    )
+    register = _register(register_operand, register_description)
+    immediate = _signed(
+        _value(immediate_operand, symbols, address),
+        9,
+        immediate_operand.first(),
+        "SP displacement",
+    )
+    opcode = 0b1000 if instruction.mnemonic == "LDSP" else 0b1001
+    return [
+        _encode_split_immediate_9(
+            opcode=opcode, immediate=immediate, register=register
+        )
+    ]
+
+
+def _jump_target(
+    operand: Operand, symbols: Mapping[str, int], address: int
+) -> int:
+    return _unsigned(
+        _value(operand, symbols, address),
+        16,
+        operand.first(),
+        "jump target",
+    )
+
+
+def _encode_conditional_jump_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode a compare-and-jump word followed by its absolute target word."""
+    _require_operands(instruction, 3)
+    source_a, source_b, target_operand = instruction.operands
+    instruction_word = _encode_register_fields(
+        opcode=0b1010,
+        destination=0,
+        function=JUMP_SECONDARY[instruction.mnemonic],
+        source_a=_register(source_a, "left source"),
+        source_b=_register(source_b, "right source"),
+    )
+    return [instruction_word, _jump_target(target_operand, symbols, address)]
+
+
+def _encode_direct_jump_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Encode JMP or JAL followed by its absolute target word."""
+    if instruction.mnemonic == "JMP":
+        _require_operands(instruction, 1)
+        destination = 0
+        function = 0b001
+        target_operand = instruction.operands[0]
+    else:
+        _require_operands(instruction, 2)
+        destination = _register(
+            instruction.operands[0], "return-address destination"
+        )
+        function = 0b010
+        target_operand = instruction.operands[1]
+
+    instruction_word = _encode_register_fields(
+        opcode=0b1011,
+        destination=0,
+        function=function,
+        source_a=0,
+        source_b=destination,
+    )
+    return [instruction_word, _jump_target(target_operand, symbols, address)]
+
+
+def _encode_single_register_instruction(instruction: Instruction) -> list[int]:
+    """Encode PUSH, POP, or JMPR; each stores its register in bits [2:0]."""
+    _require_operands(instruction, 1)
+    opcode, function = {
+        "PUSH": (0b1100, 0b001),
+        "POP": (0b1100, 0b010),
+        "JMPR": (0b1101, 0b001),
+    }[instruction.mnemonic]
+    register = _register(instruction.operands[0], "register")
+    return [
+        _encode_register_fields(
+            opcode=opcode,
+            destination=0,
+            function=function,
+            source_a=0,
+            source_b=register,
+        )
+    ]
+
+
+def _encode_jalr_instruction(instruction: Instruction) -> list[int]:
+    """Encode ``JALR link_destination, target_source``."""
+    _require_operands(instruction, 2)
+    destination_operand, source_operand = instruction.operands
+    return [
+        _encode_register_fields(
+            opcode=0b1101,
+            destination=0,
+            function=0b010,
+            source_a=_register(source_operand, "jump target source"),
+            source_b=_register(destination_operand, "return-address destination"),
+        )
+    ]
+
+
+def _encode_fpu_instruction(instruction: Instruction) -> list[int]:
+    if instruction.mnemonic in FPU_SECONDARY:
+        return _encode_binary_register_instruction(
+            instruction,
+            opcode=0b1110,
+            function=FPU_SECONDARY[instruction.mnemonic],
+        )
+
+    _require_operands(instruction, 2)
+    destination_operand, source_operand = instruction.operands
+    return [
+        _encode_register_fields(
+            opcode=0b1110,
+            destination=_register(destination_operand, "destination"),
+            function=FPU_UNARY_SECONDARY[instruction.mnemonic],
+            source_a=0,
+            source_b=_register(source_operand, "source"),
+        )
+    ]
+
+
+def encode_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Dispatch an instruction to the encoder for its visible ISA bit layout."""
+    mnemonic = instruction.mnemonic
+
+    if mnemonic == "NOP":
+        _require_operands(instruction, 0)
+        return [0x0000]
+    if mnemonic in ALU_SECONDARY:
+        return _encode_binary_register_instruction(
+            instruction, opcode=0b0000, function=ALU_SECONDARY[mnemonic]
+        )
+    if mnemonic in SET_SECONDARY:
+        return _encode_binary_register_instruction(
+            instruction, opcode=0b0001, function=SET_SECONDARY[mnemonic]
+        )
+    if mnemonic == "NOT":
+        return _encode_not_instruction(instruction)
+    if mnemonic in {"SH", "ASH"}:
+        return _encode_shift_instruction(instruction, symbols, address)
+    if mnemonic == "ADDI":
+        return _encode_addi_instruction(instruction, symbols, address)
     if mnemonic in {"LLI", "LUI"}:
-        _require_operands(instruction, 2)
-        destination = _register(operands[0], "destination")
-        immediate = _bit_pattern(
-            _value(operands[1], symbols, address), 8, operands[1].first(), "immediate"
-        )
-        selector = 1 if mnemonic == "LUI" else 0
-        return [
-            0x5000
-            | ((immediate & 0x3F) << 6)
-            | (selector << 5)
-            | (((immediate >> 6) & 0x3) << 3)
-            | destination
-        ]
+        return _encode_load_immediate_instruction(instruction, symbols, address)
     if mnemonic in {"LD", "ST"}:
-        _require_operands(instruction, {2, 3})
-        data_register = _register(
-            operands[0], "destination" if mnemonic == "LD" else "source"
-        )
-        if len(operands) == 2:
-            pointer, displacement_operand = _memory_operand(operands[1])
-        else:
-            pointer = _register(operands[1], "pointer")
-            displacement_operand = operands[2]
-        displacement = _signed(
-            _value(displacement_operand, symbols, address),
-            6,
-            displacement_operand.first(),
-            "displacement",
-        )
-        return [
-            ((6 if mnemonic == "LD" else 7) << 12)
-            | (displacement << 6)
-            | (pointer << 3)
-            | data_register
-        ]
+        return _encode_base_memory_instruction(instruction, symbols, address)
     if mnemonic in {"LDSP", "STSP"}:
-        _require_operands(instruction, 2)
-        register = _register(
-            operands[0], "destination" if mnemonic == "LDSP" else "source"
-        )
-        immediate = _signed(
-            _value(operands[1], symbols, address),
-            9,
-            operands[1].first(),
-            "SP displacement",
-        )
-        return [_immediate_9(8 if mnemonic == "LDSP" else 9, immediate, register)]
+        return _encode_stack_memory_instruction(instruction, symbols, address)
     if mnemonic in JUMP_SECONDARY:
-        _require_operands(instruction, 3)
-        source_a = _register(operands[0], "left source")
-        source_b = _register(operands[1], "right source")
-        target = _unsigned(
-            _value(operands[2], symbols, address),
-            16,
-            operands[2].first(),
-            "jump target",
-        )
-        return [_rrr(10, 0, JUMP_SECONDARY[mnemonic], source_a, source_b), target]
-    if mnemonic == "JMP":
-        _require_operands(instruction, 1)
-        target = _unsigned(
-            _value(operands[0], symbols, address),
-            16,
-            operands[0].first(),
-            "jump target",
-        )
-        return [0xB040, target]
-    if mnemonic == "JAL":
-        _require_operands(instruction, 2)
-        destination = _register(operands[0], "return-address destination")
-        target = _unsigned(
-            _value(operands[1], symbols, address),
-            16,
-            operands[1].first(),
-            "jump target",
-        )
-        return [0xB080 | destination, target]
+        return _encode_conditional_jump_instruction(instruction, symbols, address)
+    if mnemonic in {"JMP", "JAL"}:
+        return _encode_direct_jump_instruction(instruction, symbols, address)
     if mnemonic in {"PUSH", "POP", "JMPR"}:
-        _require_operands(instruction, 1)
-        register = _register(operands[0], "register")
-        base = {"PUSH": 0xC040, "POP": 0xC080, "JMPR": 0xD040}[mnemonic]
-        return [base | register]
+        return _encode_single_register_instruction(instruction)
     if mnemonic == "JALR":
-        _require_operands(instruction, 2)
-        destination = _register(operands[0], "return-address destination")
-        source = _register(operands[1], "jump target source")
-        return [0xD080 | (source << 3) | destination]
-    if mnemonic in FPU_SECONDARY:
-        _require_operands(instruction, 3)
-        return [
-            _rrr(
-                14,
-                _register(operands[0], "destination"),
-                FPU_SECONDARY[mnemonic],
-                _register(operands[1], "left source"),
-                _register(operands[2], "right source"),
-            )
-        ]
-    if mnemonic in FPU_UNARY_SECONDARY:
-        _require_operands(instruction, 2)
-        return [
-            _rrr(
-                14,
-                _register(operands[0], "destination"),
-                FPU_UNARY_SECONDARY[mnemonic],
-                0,
-                _register(operands[1], "source"),
-            )
-        ]
+        return _encode_jalr_instruction(instruction)
+    if mnemonic in FPU_SECONDARY or mnemonic in FPU_UNARY_SECONDARY:
+        return _encode_fpu_instruction(instruction)
     if mnemonic == "HALT":
         _require_operands(instruction, 0)
         return [0xF000]
@@ -821,22 +1021,40 @@ def _directive_address(
     operands = directive.operands
     if directive.name == "org":
         if len(operands) != 1:
-            raise AssemblerError(directive.token.file, directive.token.line, directive.token.column, "org expects one address")
+            raise AssemblerError(
+                directive.token.file,
+                directive.token.line,
+                directive.token.column,
+                "org expects one address",
+            )
         value = _value(operands[0], symbols, location)
     else:
         if len(operands) not in {1, 2}:
-            raise AssemblerError(directive.token.file, directive.token.line, directive.token.column, "section expects ADDRESS or NAME, ADDRESS")
+            raise AssemblerError(
+                directive.token.file,
+                directive.token.line,
+                directive.token.column,
+                "section expects ADDRESS or NAME, ADDRESS",
+            )
         value = _value(operands[-1], symbols, location)
         if len(operands) == 2:
             name_operand = operands[0]
             if len(name_operand.tokens) != 1 or name_operand.tokens[0].kind != "IDENT":
                 token = name_operand.first()
-                raise AssemblerError(token.file, token.line, token.column, "section name must be an identifier")
+                raise AssemblerError(
+                    token.file,
+                    token.line,
+                    token.column,
+                    "section name must be an identifier",
+                )
             name = name_operand.tokens[0].text
             if name in symbols:
                 token = name_operand.first()
                 raise AssemblerError(
-                    token.file, token.line, token.column, f"symbol '{name}' is already defined"
+                    token.file,
+                    token.line,
+                    token.column,
+                    f"symbol '{name}' is already defined",
                 )
             symbols[name] = value
     return _unsigned(value, 16, operands[-1].first(), "section address")
@@ -852,7 +1070,12 @@ def layout(statements: list[Statement]) -> dict[str, int]:
             if label.text in symbols:
                 previous = symbol_tokens.get(label.text)
                 suffix = f" at line {previous.line}" if previous is not None else ""
-                raise AssemblerError(label.file, label.line, label.column, f"symbol '{label.text}' already defined{suffix}")
+                raise AssemblerError(
+                    label.file,
+                    label.line,
+                    label.column,
+                    f"symbol '{label.text}' already defined{suffix}",
+                )
             symbols[label.text] = location
             symbol_tokens[label.text] = label
         body = statement.body
@@ -864,46 +1087,85 @@ def layout(statements: list[Statement]) -> dict[str, int]:
             location = _directive_address(body, symbols, location)
         elif body.name == "equ":
             if len(body.operands) != 2:
-                raise AssemblerError(body.token.file, body.token.line, body.token.column, "equ expects NAME, EXPRESSION")
+                raise AssemblerError(
+                    body.token.file,
+                    body.token.line,
+                    body.token.column,
+                    "equ expects NAME, EXPRESSION",
+                )
             name_operand = body.operands[0]
             if len(name_operand.tokens) != 1 or name_operand.tokens[0].kind != "IDENT":
                 token = name_operand.first()
                 raise AssemblerError(
-                    token.file, token.line, token.column, "constant name must be an identifier"
+                    token.file,
+                    token.line,
+                    token.column,
+                    "constant name must be an identifier",
                 )
             name = name_operand.tokens[0].text
             if name in symbols:
                 token = name_operand.first()
                 raise AssemblerError(
-                    token.file, token.line, token.column, f"symbol '{name}' is already defined"
+                    token.file,
+                    token.line,
+                    token.column,
+                    f"symbol '{name}' is already defined",
                 )
             symbols[name] = _value(body.operands[1], symbols, location)
             symbol_tokens[name] = name_operand.first()
         elif body.name in {"word", "dw", "byte", "db"}:
             if not body.operands:
-                raise AssemblerError(body.token.file, body.token.line, body.token.column, f"{body.name} expects at least one value")
+                raise AssemblerError(
+                    body.token.file,
+                    body.token.line,
+                    body.token.column,
+                    f"{body.name} expects at least one value",
+                )
             location += len(body.operands)
         elif body.name == "string":
             if not body.operands:
-                raise AssemblerError(body.token.file, body.token.line, body.token.column, "string expects at least one string literal")
+                raise AssemblerError(
+                    body.token.file,
+                    body.token.line,
+                    body.token.column,
+                    "string expects at least one string literal",
+                )
             for operand in body.operands:
                 if len(operand.tokens) != 1 or operand.tokens[0].kind != "STRING":
                     token = operand.first()
-                    raise AssemblerError(token.file, token.line, token.column, "string expects string literals")
+                    raise AssemblerError(
+                        token.file,
+                        token.line,
+                        token.column,
+                        "string expects string literals",
+                    )
                 assert isinstance(operand.tokens[0].value, str)
                 location += len(operand.tokens[0].value)
         elif body.name == "space":
             if len(body.operands) not in {1, 2}:
-                raise AssemblerError(body.token.file, body.token.line, body.token.column, "space expects COUNT or COUNT, VALUE")
+                raise AssemblerError(
+                    body.token.file,
+                    body.token.line,
+                    body.token.column,
+                    "space expects COUNT or COUNT, VALUE",
+                )
             count = _value(body.operands[0], symbols, location)
             if count < 0:
                 token = body.operands[0].first()
                 raise AssemblerError(
-                    token.file, token.line, token.column, "space count must not be negative"
+                    token.file,
+                    token.line,
+                    token.column,
+                    "space count must not be negative",
                 )
             location += count
         if location > 0x10000:
-            raise AssemblerError(body.token.file, body.token.line, body.token.column, "output exceeds the 16-bit word address space")
+            raise AssemblerError(
+                body.token.file,
+                body.token.line,
+                body.token.column,
+                "output exceeds the 16-bit word address space",
+            )
     return symbols
 
 
@@ -992,7 +1254,12 @@ def _write_word(
         token = (
             statement.body.token if statement.body is not None else statement.labels[0]
         )
-        raise AssemblerError(token.file, token.line, token.column, f"word address 0x{address:04X} is written more than once")
+        raise AssemblerError(
+            token.file,
+            token.line,
+            token.column,
+            f"word address 0x{address:04X} is written more than once",
+        )
     words[address] = word & 0xFFFF
     listing.append(ListingEntry(address, word & 0xFFFF, statement.source, continuation))
 

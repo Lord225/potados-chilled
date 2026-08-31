@@ -104,17 +104,19 @@ async def flat_fixed_instruction_decoding(dut: Dut) -> None:
 
 @cocotb.test()
 async def flat_immediate_edge_case_decoding(dut: Dut) -> None:
-    # SH: immediate 1, -1, maximum (31), and minimum (-32).
+    # SH: canonical signed IMM5 values occupy bits [10:6]; bit [11] is reserved.
     await _expect(dut, 0b0010_000001_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b001, src_a=0b010, src_b=0b010, immediate=0x0001)
+    await _expect(dut, 0b0010_011111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
+    await _expect(dut, 0b0010_001111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x000F)
+    await _expect(dut, 0b0010_010000_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFF0)
+    # A noncanonical word with reserved bit [11] set still decodes from IMM5.
     await _expect(dut, 0b0010_111111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
-    await _expect(dut, 0b0010_011111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x001F)
-    await _expect(dut, 0b0010_100000_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFE0)
 
-    # ASH uses the same signed 6-bit immediate field.
+    # ASH uses the same signed 5-bit immediate field.
     await _expect(dut, 0b0011_000001_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b001, src_a=0b010, src_b=0b010, immediate=0x0001)
-    await _expect(dut, 0b0011_111111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
-    await _expect(dut, 0b0011_011111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x001F)
-    await _expect(dut, 0b0011_100000_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFE0)
+    await _expect(dut, 0b0011_011111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
+    await _expect(dut, 0b0011_001111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x000F)
+    await _expect(dut, 0b0011_010000_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFF0)
 
     # ADDI: immediate 1, -1, maximum (255), and minimum (-256).
     await _expect(dut, 0b0100_000001_000_110, op_primary=0b0100, dst=0b110, op_secondary=0b001, src_a=0b000, src_b=0b110, immediate=0x0001)

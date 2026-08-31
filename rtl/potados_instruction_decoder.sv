@@ -68,6 +68,15 @@ module potados_instruction_decoder(
             immediate[5:0]
         };
     endfunction
+
+    function automatic logic[15:0] se_5_bit_immediate(
+        input logic [4:0] immediate
+    );
+        se_5_bit_immediate = {
+            {11{immediate[4]}},
+            immediate
+        };
+    endfunction
     
     function automatic logic[8:0] extract_immediate_9(
         input logic [15:0] instruction
@@ -122,11 +131,11 @@ module potados_instruction_decoder(
             end
             OP_SH: begin
                 decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
+                decoded.immediate = se_5_bit_immediate(instruction_low[10:6]);
             end
             OP_ASH: begin
                 decoded.dst = extract_sdp(instruction_low);
-                decoded.immediate = se_6_bit_immediate(extract_immediate_6(instruction_low));
+                decoded.immediate = se_5_bit_immediate(instruction_low[10:6]);
             end
             OP_ADDI: begin
                 decoded.dst = extract_sdp(instruction_low);

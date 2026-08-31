@@ -107,7 +107,7 @@ right operand): `DST = SRC_A op SRC_B`. Unary instructions use `SRC_B`.
 - `SDP` — 3-bit source-and-destination register pair.
 - `PTR` — 3-bit pointer-register field used by `LD` and `ST`.
 - `IMM` — the immediate field encoded by a particular instruction.
-- `IMM6`, `IMM8`, `IMM16` — immediate encodings decoded below, sign extended.
+- `IMM5`, `IMM6`, `IMM9`, `IMM16` — immediate encodings decoded below, sign extended unless noted otherwise.
 
 ## Registers
 
@@ -124,29 +124,24 @@ right operand): `DST = SRC_A op SRC_B`. Unary instructions use `SRC_B`.
 
 ## Immediate encodings
 
-### IMM6
+### IMM5 (shifts)
 
-Used only by the shift instructions. The execution unit uses bits `[4:0]` as a
-signed five-bit amount; bit `[5]` is ignored. Consequently, `6'b100000`
-(`-32` when interpreted as signed `IMM6`) has an effective shift amount of
-zero.
+Used only by the shift instructions. Instruction bit `[11]` is reserved and
+must be zero; bits `[10:6]` contain a signed five-bit amount in the range
+`-16..15`.
 
 ```text
-III III
- \\\ \\\  
-  \\\ \\\  
-   \\\ \\\  
-    \\\ \\\__ 1
-     \\\ \\__ 2
-      \\\ \__ 4
-       \\\___ 8
-        \\___ 16
-         \___ -32
+0II III
+     \\\__ 1
+      \\__ 2
+       \__ 4
+        \_ 8
+         \_ -16
 ```
 
 ### IMM8
 
-Used for `LD` and `ST` displacements. Immediate bit mangling aligns bits of
+Used for `LDSP` and `STSP` displacements. Immediate bit mangling aligns bits of
 equal weight to simplify immediate-handling logic.
 
 ```text
