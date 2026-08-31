@@ -13,9 +13,6 @@ module potados_rom #(
 
     integer word_index;
     initial begin
-        for (word_index = 0; word_index < 65536; word_index = word_index + 1) begin
-            memory[word_index] = 16'h0000;
-        end
         if (LOAD_ROM_FILE) begin
             $readmemh(ROM_FILE, memory);
         end

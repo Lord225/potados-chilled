@@ -35,7 +35,9 @@ async def negative_shift_amount_shifts_right(dut: Dut) -> None:
     """ISA rule: SH 0x8001, -1 == 0x4000."""
     dut.clk.value = 0
     dut.reset.value = 0
-    dut.alu_request.value = _alu_request(operand_a=0x8001, shift_amount=-1, alu_op=ALU_SH)
+    dut.alu_request.value = _alu_request(
+        operand_a=0x8001, shift_amount=-1, alu_op=ALU_SH
+    )
     await Timer(1, unit="ns")
     assert int(dut.alu_output.value) == 0x4000
 
@@ -45,7 +47,9 @@ async def positive_arithmetic_shift_shifts_left(dut: Dut) -> None:
     """ISA rule: ASH 0x4001, 1 == 0x8002."""
     dut.clk.value = 0
     dut.reset.value = 0
-    dut.alu_request.value = _alu_request(operand_a=0x4001, shift_amount=1, alu_op=ALU_ASH)
+    dut.alu_request.value = _alu_request(
+        operand_a=0x4001, shift_amount=1, alu_op=ALU_ASH
+    )
     await Timer(1, unit="ns")
     assert int(dut.alu_output.value) == 0x8002
 
@@ -55,7 +59,9 @@ async def imm6_sign_bit_is_ignored_by_shift_execution(dut: Dut) -> None:
     """SH 0x1234, -32 uses low IMM5 == 0 and is therefore a no-op."""
     dut.clk.value = 0
     dut.reset.value = 0
-    dut.alu_request.value = _alu_request(operand_a=0x1234, shift_amount=-32, alu_op=ALU_SH)
+    dut.alu_request.value = _alu_request(
+        operand_a=0x1234, shift_amount=-32, alu_op=ALU_SH
+    )
     await Timer(1, unit="ns")
     assert int(dut.alu_output.value) == 0x1234
 
@@ -88,7 +94,9 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
             test_filter=testcase,
         )
     except SystemExit as exc:
-        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+        pytest.fail(
+            f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False
+        )
 
 
 def test_negative_shift_amount_shifts_right(alu_runner: Runner) -> None:

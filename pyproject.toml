@@ -3,7 +3,7 @@ name = "potados-chilled"
 version = "0.1.0"
 description = "Simple Tang Nano 20K FPGA starter project"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "==3.13"
 dependencies = [
     "cocotb>=2.0.1",
     "pytest>=9.0.3",

@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import cocotb
+import cocotb_tools.runner as cocotb_runner
 import pytest
 from cocotb.triggers import Timer
-import cocotb_tools.runner as cocotb_runner
 from cocotb_tools.runner import get_runner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -256,25 +256,34 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
             test_filter=testcase,
         )
     except SystemExit as exc:
-        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+        pytest.fail(
+            f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False
+        )
 
 
 def test_execute_stage_runs_alu_and_preserves_writeback_metadata(
     execute_stage_runner: Runner,
 ) -> None:
-    _run_cocotb_test(execute_stage_runner, "execute_stage_runs_alu_and_preserves_writeback_metadata")
+    _run_cocotb_test(
+        execute_stage_runner, "execute_stage_runs_alu_and_preserves_writeback_metadata"
+    )
 
 
 def test_execute_stage_prepares_memory_and_stack_operations(
     execute_stage_runner: Runner,
 ) -> None:
-    _run_cocotb_test(execute_stage_runner, "execute_stage_prepares_memory_and_stack_operations")
+    _run_cocotb_test(
+        execute_stage_runner, "execute_stage_prepares_memory_and_stack_operations"
+    )
 
 
 def test_execute_stage_resolves_conditional_and_unconditional_jumps(
     execute_stage_runner: Runner,
 ) -> None:
-    _run_cocotb_test(execute_stage_runner, "execute_stage_resolves_conditional_and_unconditional_jumps")
+    _run_cocotb_test(
+        execute_stage_runner,
+        "execute_stage_resolves_conditional_and_unconditional_jumps",
+    )
 
 
 def test_execute_stage_forwards_fpu_result_and_halt(
