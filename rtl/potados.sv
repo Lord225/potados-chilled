@@ -20,7 +20,7 @@ module potados #(
     input logic clk,
     input logic reset,
     output register_file_t registers_out,
-    output logic halt_out,
+    output logic potados_done,
     output logic[15:0] pc_out
 );
     // Fetched instruction words and their validity flags.
@@ -314,7 +314,7 @@ module potados #(
     end
 
     assign registers_out = registers;
-    assign halt_out = halted && (
+    assign potados_done = halted && (
         execute_stage.valid == 1'b0 &&
         memory_stage.valid == 1'b0 &&
         writeback_stage.valid == 1'b0

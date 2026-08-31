@@ -44,7 +44,7 @@ async def _run_program(dut: Dut, program: str, *, maximum_cycles: int = 160) -> 
     for _ in range(maximum_cycles):
         await RisingEdge(dut.clk)
         await Timer(1, unit="ns")
-        if int(dut.halt_out.value):
+        if int(dut.potados_done.value):
             return int(dut.registers_out.value)
 
     raise AssertionError(f"CPU did not reach HALT within {maximum_cycles} cycles")

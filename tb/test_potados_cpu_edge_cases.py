@@ -72,12 +72,12 @@ async def _run_until_halt(dut: Dut, *, maximum_cycles: int = 96) -> None:
         dut._log.info(
             "Cycle %d: HALT=%d, Registers=%s, Ram[16]=%04X\n%s",
             _,
-            int(dut.halt_out.value),
+            int(dut.potados_done.value),
             _dump_registers(dut),
             _ram(dut, 16),
             _dump_pipeline(dut),
         )
-        if int(dut.halt_out.value):
+        if int(dut.potados_done.value):
             return
     raise AssertionError(f"CPU did not reach HALT within {maximum_cycles} cycles")
 
@@ -128,7 +128,7 @@ async def alternating_store_loads_at_one_address_return_each_new_value(
         if current_r6 != previous_r6:
             observed_r6.append(current_r6)
             previous_r6 = current_r6
-        if int(dut.halt_out.value):
+        if int(dut.potados_done.value):
             break
     else:
         raise AssertionError("CPU did not reach HALT within 96 cycles")
@@ -210,7 +210,7 @@ async def halt_is_sticky_until_reset(dut: Dut) -> None:
     for _ in range(4):
         await RisingEdge(dut.clk)
         await Timer(1, unit="ns")
-        assert int(dut.halt_out.value) == 1
+        assert int(dut.potados_done.value) == 1
 
 
 def _runner() -> Runner:

@@ -109,7 +109,7 @@ repeatable ROM-image build flow.
 
 All tests should remain normal Pytest tests that each launch one clearly named
 Cocotb coroutine.  Tests should primarily inspect architectural outputs
-(`registers_out`, memory, `halt_out`, and PC); internal signals are appropriate
+(`registers_out`, memory, `potados_done`, and PC); internal signals are appropriate
 for focused stage-wiring assertions only.
 
 | Batch | Scope | Status |
@@ -139,7 +139,7 @@ file-based simulations.
 | FPU execution | ISA lists seven FPU operations. | No FPU implementation exists; top-level supplies zero. | Implement the unit or reserve the opcode range. |
 | Jumps | ISA defines conditional jumps and direct/register jump-and-link. | Execute target/taken signals reach fetch, but younger wrong-path instructions are not flushed. | Implement control-hazard/flush policy. |
 | Memory loads | `LD`, `LDSP`, and `POP` write a RAM value to `DST`. | RAM reads are registered, but writeback currently has no captured RAM-read result; `WB_MEMORY` selects a store-data field. | Add a RAM response path before claiming load support. |
-| HALT | ISA says execution halts. | `halt_out` is an execute-stage signal; fetch requests stop, but the signal is not latched/sticky. | Define whether HALT is sticky and freeze all architectural state accordingly. |
+| HALT | ISA says execution halts. | `potados_done` is an execute-stage signal; fetch requests stop, but the signal is not latched/sticky. | Define whether HALT is sticky and freeze all architectural state accordingly. |
 
 ## Assembler project scope
 
