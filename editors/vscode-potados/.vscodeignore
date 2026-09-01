@@ -1,0 +1,7 @@
+.gitignore
+.vscode/**
+scripts/**
+**/node_modules/**
+${APPDATA}*/**
+package-lock.json
+*.vsix

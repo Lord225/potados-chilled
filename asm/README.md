@@ -78,6 +78,30 @@ LDSP R4, 8
 STSP R4, -8
 ```
 
+Convenience pseudo-instructions keep common code compact. They expand into
+ordinary POTADOS ISA instructions, so no RTL support is required:
+
+```asm
+LI  R2, 42        ; one word: LLI R2, 42
+LI  R3, 0x1234    ; two words: LUI R3, 0x12; ADDI R3, 0x34
+LEA R3, table      ; address-oriented spelling of LI
+MOV R4, R2        ; ADD R4, R2, ZERO
+ADD R4, R2        ; destructive form: ADD R4, R4, R2
+LD  R3, R2        ; zero-offset form: LD R3, [R2 + 0]
+ST  R3, R2        ; zero-offset form: ST R3, [R2 + 0]
+CLR R2            ; LLI R2, 0
+INC R2            ; ADDI R2, 1
+DEC R2            ; ADDI R2, -1
+NEG R4, R2        ; SUB R4, ZERO, R2; ``NEG R2`` is destructive
+J loop            ; JMP loop
+CALL function     ; JAL R7, function
+RET               ; JMPR R7
+```
+
+`LI` uses one word for compile-time constants from `0` through `255`; all
+other 16-bit values use the two-word expansion. Symbolic `LI` expressions use
+the two-word form to keep forward-label addresses stable.
+
 `LD` and `ST` use a bracketed memory operand: `[PTR + IMM]` or
 `[PTR - IMM]`. Whitespace inside the brackets is optional.
 

@@ -32,6 +32,8 @@ module potados #(
     // By default io_address is 0, meaning no memory mapped device is selected.
     // Valid addresses are selected by RAM_LOW_ADDRESS and RAM_HIGH_ADDRESS parameters
     
+    // TODO: add valid & ready
+
     // io_address is an address requested by CPU 
     output logic [15:0] io_address,
     // io_read_enable is a signal that indicates that CPU wants to **read** from the memory mapped device at io_address 

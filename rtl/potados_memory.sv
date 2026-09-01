@@ -45,8 +45,6 @@ module potados_ram #(
         end
         if (load_enable) begin
             load_data <= memory[address];
-        end else begin
-            load_data <= 16'h0000;
         end
     end
 endmodule

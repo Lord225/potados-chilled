@@ -1,35 +1,113 @@
-; POTADOS Tang Nano 20K demonstration program.
-; 0x8000..0x8005  PWM brightness registers for LED0..LED5
-; 0x8006           button 1 (also wired as CPU reset, so normally 0 here)
-; 0x8007           button 2
+start:
+LI SP, 0x0100
+LI R2, 0x0000
+LI R4, 0x8000
 
-; R2 = IO base address, 0x8000.
-LUI R2, 0x80
-; R3 = brightness written to each LED PWM register.
-LLI R3, 0x0000
-
-; R5 - Where to count
-LUI R5, 0xFF
-
-loop:
-    ST R3, [R2 + 0]  ; LED0
-    ST R3, [R2 + 1]  ; LED1
-    ST R3, [R2 + 2]  ; LED2
-    ST R3, [R2 + 3]  ; LED3
-    ST R3, [R2 + 4]  ; LED4
-    ST R3, [R2 + 5]  ; LED5
-    ADDI R3, R3, 1
-    
-    LUI R4, 0x01 ; 0x0100
-    JB R3, R4, skip 
-        LLI R3, 0x0000
-    skip:
-
-    LLI R4, 0x0000
-    delay:
-        ADDI R4, R4, 1
-        JNE R4, R5, delay
-
-    JMP loop
+LLI R3, 255
+ST R3, [R2 + 0]
+LLI R3, 128
+ST R3, [R2 + 1]
+LLI R3, 32
+ST R3, [R2 + 2]
+LLI R3, 10
+ST R3, [R2 + 3]
+LLI R3, 1
+ST R3, [R2 + 4]
+LLI R3, 0
+ST R3, [R2 + 5]
+CALL show_array
+CALL super_delay
+CALL bubble_sort
+CALL super_delay
+CALL super_delay
+CALL super_delay
+CALL super_delay
+JMP start
 
 HALT
+
+show_array:
+    PUSH R4
+    LI R4, 0x8000
+
+    LD R3, [R2 + 0]
+    ST R3, [R4 + 0]
+    LD R3, [R2 + 1]
+    ST R3, [R4 + 1]
+    LD R3, [R2 + 2]
+    ST R3, [R4 + 2]
+    LD R3, [R2 + 3]
+    ST R3, [R4 + 3]
+    LD R3, [R2 + 4]
+    ST R3, [R4 + 4]
+    LD R3, [R2 + 5]
+    ST R3, [R4 + 5]
+    POP R4
+    RET
+
+bubble_sort:
+    PUSH R4
+    PUSH R5
+    PUSH R6
+    PUSH R7
+
+    LI R4, 5              ; five outer passes
+
+outer_pass:
+    MOV R5, R2            ; pointer = array base
+    LI R6, 5              ; five adjacent comparisons
+
+inner_pass:
+    LD R3, [R5 + 0]       ; left value
+    LD R7, [R5 + 1]       ; right value
+
+    JAE R7, R3, no_swap   ; right >= left: already ordered
+
+    ST R7, [R5 + 0]       ; otherwise swap them
+    ST R3, [R5 + 1]
+
+no_swap:
+    CALL show_array
+    CALL super_delay
+
+    INC R5
+    DEC R6
+    JNE R6, ZERO, inner_pass
+
+    DEC R4
+    JNE R4, ZERO, outer_pass
+
+    POP R7
+    POP R6
+    POP R5
+    POP R4
+    RET
+delay:
+    PUSH R4
+    LI R4, 0xFFFF
+delay_loop:
+    DEC R4
+    JNE R4, ZERO, delay_loop
+    POP R4
+    RET
+super_delay:
+    PUSH R4
+    PUSH R7
+
+    LI R4, 0x0020
+super_delay_loop:
+    CALL delay
+    DEC R4
+    JNE R4, ZERO, super_delay_loop
+
+    POP R7
+    POP R4
+    RET
+
+prank:
+  LUI SP, 21
+  LLI SP, 37
+  RET
+
+
+

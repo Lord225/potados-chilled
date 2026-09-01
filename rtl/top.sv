@@ -28,9 +28,7 @@ module top #(
         .ROM_SIZE(16'h1fff)
     ) potados_inst (
         .clk(clk),
-        // Tang Nano 9K buttons are active-low.  S1 resets the CPU.
         .reset(!btn1),
-        // Expected address is 8000 to ffff,
         .io_address(io_address),
         .io_read_enable(io_read_enable),
         .io_write_enable(io_write_enable),
@@ -66,10 +64,18 @@ module top #(
             io_read_data <= 16'h0000;
         end
 
-        if (pwm_counter == 1000) begin
+        if (pwm_counter == 255) begin
             pwm_counter <= 0;
         end else begin
             pwm_counter <= pwm_counter + 1;
+        end
+
+        if (!btn1) begin
+            // Reset IO registers when btn1 is pressed
+            for (int i = 0; i < 6; i++) begin
+                io_registers[i] <= 16'h0000;
+                pwm_counter <= 0;
+            end
         end
     end
 

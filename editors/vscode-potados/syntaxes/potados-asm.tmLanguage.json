@@ -1,0 +1,124 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "POTADOS Assembly",
+  "scopeName": "source.potados-asm",
+  "patterns": [
+    {"include": "#comments"},
+    {"include": "#strings"},
+    {"include": "#labels"},
+    {"include": "#directives"},
+    {"include": "#pseudos"},
+    {"include": "#instructions"},
+    {"include": "#registers"},
+    {"include": "#numbers"},
+    {"include": "#operators"}
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.potados-asm",
+          "match": ";.*$"
+        },
+        {
+          "name": "comment.line.number-sign.potados-asm",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.potados-asm",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {"name": "constant.character.escape.potados-asm", "match": "\\\\[nrt0'\"\\\\]"}
+          ]
+        },
+        {
+          "name": "string.quoted.single.potados-asm",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {"name": "constant.character.escape.potados-asm", "match": "\\\\[nrt0'\"\\\\]"}
+          ]
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(:)",
+          "captures": {
+            "1": {"name": "entity.name.function.label.potados-asm"},
+            "2": {"name": "punctuation.separator.label.potados-asm"}
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.potados-asm",
+          "match": "(?i)(?<![A-Za-z0-9_])\\.(?:org|section|equ|word|dw|byte|db|string|space)\\b"
+        },
+        {
+          "name": "support.function.builtin.potados-asm",
+          "match": "%(?:hi|lo|rel)\\b"
+        }
+      ]
+    },
+    "pseudos": {
+      "patterns": [
+        {
+          "name": "keyword.other.pseudo.potados-asm",
+          "match": "(?i)\\b(?:LI|LEA|MOV|CLR|INC|DEC|NEG|J|CALL|RET)\\b"
+        }
+      ]
+    },
+    "instructions": {
+      "patterns": [
+        {
+          "name": "keyword.control.jump.potados-asm",
+          "match": "(?i)\\b(?:JGE|JL|JE|JNE|JAE|JB|JMP|JAL|JMPR|JALR)\\b"
+        },
+        {
+          "name": "keyword.other.memory.potados-asm",
+          "match": "(?i)\\b(?:LD|ST|LDSP|STSP|PUSH|POP)\\b"
+        },
+        {
+          "name": "keyword.other.fpu.potados-asm",
+          "match": "(?i)\\b(?:FADD|FSUB|FMUL|FDIV|ITOF|FTOI|FTOU)\\b"
+        },
+        {
+          "name": "keyword.other.instruction.potados-asm",
+          "match": "(?i)\\b(?:NOP|ADD|SUB|AND|OR|XOR|NOT|MUL|SGE|SL|SE|SNE|SAE|SB|SH|ASH|ADDI|LLI|LUI|HALT)\\b"
+        }
+      ]
+    },
+    "registers": {
+      "patterns": [
+        {
+          "name": "variable.language.register.potados-asm",
+          "match": "(?i)\\b(?:ZERO|SP|R[0-7])\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {"name": "constant.numeric.hex.potados-asm", "match": "(?i)(?<![A-Za-z0-9_])-?0x[0-9a-f](?:_?[0-9a-f])*\\b"},
+        {"name": "constant.numeric.binary.potados-asm", "match": "(?i)(?<![A-Za-z0-9_])-?0b[01](?:_?[01])*\\b"},
+        {"name": "constant.numeric.octal.potados-asm", "match": "(?i)(?<![A-Za-z0-9_])-?0o[0-7](?:_?[0-7])*\\b"},
+        {"name": "constant.numeric.decimal.potados-asm", "match": "(?<![A-Za-z0-9_])-?(?:0d)?[0-9](?:_?[0-9])*\\b"}
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {"name": "keyword.operator.arithmetic.potados-asm", "match": "[+-]"},
+        {"name": "punctuation.section.brackets.potados-asm", "match": "[\\[\\]()]"},
+        {"name": "punctuation.separator.comma.potados-asm", "match": ","}
+      ]
+    }
+  }
+}

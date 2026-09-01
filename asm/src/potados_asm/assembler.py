@@ -409,6 +409,17 @@ INSTRUCTIONS = {
     "FTOI",
     "FTOU",
     "HALT",
+    # Assembler pseudo-instructions. They expand to ordinary ISA words.
+    "LI",
+    "LEA",
+    "MOV",
+    "CLR",
+    "INC",
+    "DEC",
+    "NEG",
+    "J",
+    "CALL",
+    "RET",
 }
 
 
@@ -690,9 +701,14 @@ FPU_UNARY_SECONDARY = {"ITOF": 5, "FTOI": 6, "FTOU": 7}
 def _encode_binary_register_instruction(
     instruction: Instruction, *, opcode: int, function: int
 ) -> list[int]:
-    """Encode ``MNEMONIC destination, source_a, source_b``."""
-    _require_operands(instruction, 3)
-    destination, source_a, source_b = instruction.operands
+    """Encode three-operand or destructive two-operand register operations."""
+    _require_operands(instruction, {2, 3})
+    destination = instruction.operands[0]
+    if len(instruction.operands) == 2:
+        # ``ADD R2, R3`` means ``ADD R2, R2, R3``.
+        source_a, source_b = destination, instruction.operands[1]
+    else:
+        _, source_a, source_b = instruction.operands
     return [
         _encode_register_fields(
             opcode=opcode,
@@ -797,6 +813,73 @@ def _encode_load_immediate_instruction(
     ]
 
 
+def _encode_load_immediate_word(destination: int, immediate: int, *, upper: bool) -> int:
+    """Return one LLI/LUI word for an already validated byte value."""
+    return (
+        0b0101 << 12
+        | (immediate & 0b11_1111) << 6
+        | int(upper) << 5
+        | ((immediate >> 6) & 0b11) << 3
+        | destination
+    )
+
+
+def _li_short_value(instruction: Instruction, address: int) -> int | None:
+    """Return a byte-sized constant when LI can safely occupy one word.
+
+    Symbolic expressions deliberately use the long form during layout.  That
+    keeps label addresses stable even when a forward reference later resolves
+    to a small value.
+    """
+    operand = instruction.operands[1]
+    try:
+        value = _value(operand, {}, address)
+    except AssemblerError as error:
+        if error.message.startswith("undefined symbol"):
+            return None
+        raise
+    return value if 0 <= value <= 0xFF else None
+
+
+def _encode_li_instruction(
+    instruction: Instruction, symbols: Mapping[str, int], address: int
+) -> list[int]:
+    """Expand ``LI register, value`` to LLI or LUI followed by ADDI.
+
+    LI is an assembler convenience only: the processor still has exactly the
+    two explicit immediate instructions defined by the ISA.
+    """
+    _require_operands(instruction, 2)
+    destination_operand, value_operand = instruction.operands
+    destination = _register(destination_operand, "destination")
+    value = _bit_pattern(
+        _value(value_operand, symbols, address),
+        16,
+        value_operand.first(),
+        "LI immediate",
+    )
+
+    short_value = _li_short_value(instruction, address)
+    if short_value is not None:
+        return [_encode_load_immediate_word(destination, short_value, upper=False)]
+
+    high_byte = (value >> 8) & 0xFF
+    low_byte = value & 0xFF
+    return [
+        _encode_load_immediate_word(destination, high_byte, upper=True),
+        _encode_split_immediate_9(
+            opcode=0b0100, immediate=low_byte, register=destination
+        ),
+    ]
+
+
+def _encode_addi_word(register: int, immediate: int) -> int:
+    """Return one ADDI word for a validated signed nine-bit immediate."""
+    return _encode_split_immediate_9(
+        opcode=0b0100, immediate=immediate, register=register
+    )
+
+
 def _encode_base_memory_instruction(
     instruction: Instruction, symbols: Mapping[str, int], address: int
 ) -> list[int]:
@@ -807,7 +890,16 @@ def _encode_base_memory_instruction(
     data_register = _register(data_operand, data_description)
 
     if len(instruction.operands) == 2:
-        pointer, displacement_operand = _memory_operand(instruction.operands[1])
+        address_operand = instruction.operands[1]
+        if len(address_operand.tokens) == 1 and address_operand.tokens[0].kind == "IDENT":
+            # ``LD R3, R2`` / ``ST R3, R2`` are concise zero-offset forms.
+            pointer = _register(address_operand, "pointer")
+            token = address_operand.first()
+            displacement_operand = Operand(
+                [Token("NUMBER", "0", token.file, token.line, token.column, 0)]
+            )
+        else:
+            pointer, displacement_operand = _memory_operand(address_operand)
     else:
         pointer = _register(instruction.operands[1], "pointer")
         displacement_operand = instruction.operands[2]
@@ -970,6 +1062,72 @@ def encode_instruction(
     if mnemonic == "NOP":
         _require_operands(instruction, 0)
         return [0x0000]
+    if mnemonic in {"J", "CALL"}:
+        _require_operands(instruction, 1)
+        function = 0b001 if mnemonic == "J" else 0b010
+        return [
+            _encode_register_fields(
+                opcode=0b1011,
+                destination=0,
+                function=function,
+                source_a=0,
+                source_b=0 if mnemonic == "J" else 0b111,
+            ),
+            _jump_target(instruction.operands[0], symbols, address),
+        ]
+    if mnemonic == "RET":
+        _require_operands(instruction, 0)
+        return [
+            _encode_register_fields(
+                opcode=0b1101,
+                destination=0,
+                function=0b001,
+                source_a=0,
+                source_b=0b111,
+            )
+        ]
+    if mnemonic == "MOV":
+        _require_operands(instruction, 2)
+        destination, source = instruction.operands
+        return [
+            _encode_register_fields(
+                opcode=0b0000,
+                destination=_register(destination, "destination"),
+                function=ALU_SECONDARY["ADD"],
+                source_a=_register(source, "source"),
+                source_b=0,
+            )
+        ]
+    if mnemonic in {"LI", "LEA"}:
+        return _encode_li_instruction(instruction, symbols, address)
+    if mnemonic == "CLR":
+        _require_operands(instruction, 1)
+        return [
+            _encode_load_immediate_word(
+                _register(instruction.operands[0], "destination"), 0, upper=False
+            )
+        ]
+    if mnemonic in {"INC", "DEC"}:
+        _require_operands(instruction, 1)
+        immediate = 1 if mnemonic == "INC" else -1
+        return [
+            _encode_addi_word(
+                _register(instruction.operands[0], "source/destination"), immediate
+            )
+        ]
+    if mnemonic == "NEG":
+        _require_operands(instruction, {1, 2})
+        destination = instruction.operands[0]
+        source = instruction.operands[-1]
+        return [
+            _encode_register_fields(
+                opcode=0b0000,
+                destination=_register(destination, "destination"),
+                function=ALU_SECONDARY["SUB"],
+                source_a=0,
+                source_b=_register(source, "source"),
+            )
+        ]
     if mnemonic in ALU_SECONDARY:
         return _encode_binary_register_instruction(
             instruction, opcode=0b0000, function=ALU_SECONDARY[mnemonic]
@@ -1012,7 +1170,9 @@ def encode_instruction(
 
 
 def _instruction_size(instruction: Instruction) -> int:
-    return 2 if instruction.mnemonic in {*JUMP_SECONDARY, "JMP", "JAL"} else 1
+    if instruction.mnemonic in {"LI", "LEA"}:
+        return 1 if _li_short_value(instruction, 0) is not None else 2
+    return 2 if instruction.mnemonic in {*JUMP_SECONDARY, "JMP", "JAL", "J", "CALL"} else 1
 
 
 def _directive_address(

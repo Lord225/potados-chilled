@@ -35,9 +35,22 @@ PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
         ("ADDI R3, -1", [0x4FFB]),
         ("LLI R2, 0xA5", [0x5952]),
         ("LUI R2, 0xA5", [0x5972]),
+        ("LI R2, 0xA5", [0x5952]),
+        ("LI R2, 0x1234", [0x54A2, 0x4D02]),
+        ("LI R2, -1", [0x5FFA, 0x4FDA]),
+        ("LEA R2, 0xA5", [0x5952]),
+        ("MOV R4, R2", [0x0850]),
+        ("CLR R2", [0x5002]),
+        ("INC R2", [0x4042]),
+        ("DEC R2", [0x4FFA]),
+        ("NEG R4, R2", [0x0882]),
+        ("NEG R2", [0x0482]),
+        ("ADD R4, R2", [0x0862]),
         ("LD R4, [ R2 + 1 ]", [0x6054]),
+        ("LD R4, R2", [0x6014]),
         ("LD R4, [R2 - 1]", [0x6FD4]),
         ("ST R3, [ R2 + 1 ]", [0x7053]),
+        ("ST R3, R2", [0x7013]),
         ("ST R3, [R2 - 1]", [0x7FD3]),
         ("LDSP R4, -1", [0x8FFC]),
         ("STSP R3, 1", [0x9043]),
@@ -48,10 +61,13 @@ PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
         ("JAE R2, R3, 0x1234", [0xA113, 0x1234]),
         ("JB R2, R3, 0x1234", [0xA153, 0x1234]),
         ("JMP 0x1234", [0xB040, 0x1234]),
+        ("J 0x1234", [0xB040, 0x1234]),
         ("JAL R5, 0x1234", [0xB085, 0x1234]),
+        ("CALL 0x1234", [0xB087, 0x1234]),
         ("PUSH R2", [0xC042]),
         ("POP R3", [0xC083]),
         ("JMPR R2", [0xD042]),
+        ("RET", [0xD047]),
         ("JALR R5, R2", [0xD095]),
         ("FADD R4, R2, R3", [0xE853]),
         ("FSUB R4, R2, R3", [0xE893]),
@@ -126,6 +142,22 @@ def test_long_jumps_and_labels_use_word_addresses() -> None:
         0xB087, 0x0000,
         0xF000,
     ]
+
+
+def test_symbolic_li_uses_the_long_form_to_keep_forward_labels_stable() -> None:
+    result = assemble(
+        """
+        LI R2, target
+        J target
+        target: HALT
+        """,
+        filename="li-label.asm",
+    )
+
+    # The target has a byte-sized address, but symbolic LI deliberately remains
+    # two words so a forward reference cannot change later label addresses.
+    assert result.symbols == {"target": 4}
+    assert result.dense_words() == [0x5022, 0x4102, 0xB040, 0x0004, 0xF000]
 
 
 def test_comments_sections_data_and_expressions() -> None:

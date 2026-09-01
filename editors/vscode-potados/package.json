@@ -1,0 +1,61 @@
+{
+  "name": "potados-asm",
+  "displayName": "POTADOS Assembly",
+  "description": "Syntax highlighting and completions for the POTADOS Chilled assembler.",
+  "version": "0.1.0",
+  "publisher": "lord225",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lord225/potados-chilled.git",
+    "directory": "editors/vscode-potados"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "potados",
+    "assembly",
+    "asm",
+    "fpga"
+  ],
+  "activationEvents": [
+    "onLanguage:potados-asm"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "potados-asm",
+        "aliases": [
+          "POTADOS Assembly",
+          "POTADOS ASM"
+        ],
+        "extensions": [
+          ".asm",
+          ".pasm"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "potados-asm",
+        "scopeName": "source.potados-asm",
+        "path": "./syntaxes/potados-asm.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "check": "node --check extension.js && node ./scripts/validate-json.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0"
+  }
+}
