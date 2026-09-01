@@ -15,13 +15,33 @@
 
 module potados #(
     parameter ROM_FILE = "rom.hex",
-    parameter LOAD_ROM_FILE = 1'b1
+    parameter LOAD_ROM_FILE = 1'b1,
+    parameter logic [15:0] RAM_LOW_ADDRESS = 16'h0000,
+    parameter logic [15:0] RAM_HIGH_ADDRESS = 16'h7fff,
+    parameter logic [15:0] ROM_SIZE = 16'h7fff
 )(
     input logic clk,
     input logic reset,
     output register_file_t registers_out,
     output logic potados_done,
-    output logic[15:0] pc_out
+    output logic[15:0] pc_out,
+
+    // IO Interface for external memory mapped devices.
+    // All Memory events are synchronous to the clock, and should be valid on the next clock cycle.
+    // CPU might issue new memory requests every clock cycle
+    // By default io_address is 0, meaning no memory mapped device is selected.
+    // Valid addresses are selected by RAM_LOW_ADDRESS and RAM_HIGH_ADDRESS parameters
+    
+    // io_address is an address requested by CPU 
+    output logic [15:0] io_address,
+    // io_read_enable is a signal that indicates that CPU wants to **read** from the memory mapped device at io_address 
+    output logic        io_read_enable,
+    // io_write_enable is a signal that indicates that CPU wants to **write** to the memory mapped device at io_address
+    output logic        io_write_enable,
+    // io_write_data is the data that CPU wants to write to the memory mapped device at io_address
+    output logic [15:0] io_write_data,
+    // io_read_data is the data that CPU reads from the memory mapped device at io_address
+    input  logic [15:0] io_read_data
 );
     // Fetched instruction words and their validity flags.
     logic [15:0] fetched_instruction_low;
@@ -98,7 +118,8 @@ module potados #(
 
     potados_program_memory #(
         .ROM_FILE(ROM_FILE),
-        .LOAD_ROM_FILE(LOAD_ROM_FILE)
+        .LOAD_ROM_FILE(LOAD_ROM_FILE),
+        .ROM_SIZE(ROM_SIZE)
     ) program_memory_inst (
         .clk(clk),
         .reset(reset),
@@ -236,13 +257,23 @@ module potados #(
         .register_status(register_status)
     );
 
-    potados_memory potados_memory (
+    potados_memory #(
+        .RAM_LOW_ADDRESS(RAM_LOW_ADDRESS),
+        .RAM_HIGH_ADDRESS(RAM_HIGH_ADDRESS)
+    ) potados_memory (
         .clk         (clk),
+        .reset       (reset),
         .address     (ram_address),
         .store_enable(ram_store_enable),
         .store_data  (ram_store_data),
         .load_enable (ram_load_enable),
-        .load_data   (ram_load_data)
+        .load_data   (ram_load_data),
+
+        .io_address     (io_address),
+        .io_read_enable (io_read_enable),
+        .io_write_enable(io_write_enable),
+        .io_write_data  (io_write_data),
+        .io_read_data   (io_read_data)
     );
 
     always_ff @(posedge clk or posedge reset) begin

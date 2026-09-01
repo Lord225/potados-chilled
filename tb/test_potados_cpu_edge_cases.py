@@ -59,6 +59,7 @@ async def _reset(dut: Dut, program: str) -> None:
     _load_program(dut, program)
     dut.clk.value = 0
     dut.reset.value = 1
+    dut.io_read_data.value = 0
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await RisingEdge(dut.clk)
     await Timer(1, unit="ns")

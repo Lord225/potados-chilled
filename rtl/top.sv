@@ -1,33 +1,82 @@
 `timescale 1ns / 1ps
-`include "potados_memory.sv"
+`include "potados.sv"
 
 module top #(
-    parameter int unsigned COUNT_WIDTH = 6
+    // Keep the default build self-contained.  Supply another file with
+    // `chparam -set ROM_FILE \"your-program.hex\" top` when needed.
+    parameter ROM_FILE = "rom.hex"
 ) (
-    input  logic                   clk,
-    input  logic                   btn1,
-    input  logic                   btn2,
-    output logic [COUNT_WIDTH-1:0] led
+    input  logic       clk,
+    input  logic       btn1,
+    input  logic       btn2,
+    output logic [5:0] led
 );
-    logic [COUNT_WIDTH-1:0] count;
-    logic [15:0] ram_load_data;
+    logic [15:0] io_address;
+    logic        io_read_enable;
+    logic        io_write_enable;
+    logic [15:0] io_write_data;
+    logic [15:0] io_read_data;
 
-    potados_ram ram_inst (
+    logic [15:0] io_registers[0:5]; // One for each LED
+
+    integer pwm_counter = 0;
+
+    potados #(
+        .ROM_FILE(ROM_FILE),
+        .RAM_LOW_ADDRESS(16'h0000),
+        .RAM_HIGH_ADDRESS(16'h1fff),
+        .ROM_SIZE(16'h1fff)
+    ) potados_inst (
         .clk(clk),
-        .address({{(16 - COUNT_WIDTH){1'b0}}, count}),
-        .store_enable(btn1),
-        .store_data({{(16 - COUNT_WIDTH){1'b0}}, count}),
-        .load_enable(1'b1),
-        .load_data(ram_load_data)
+        // Tang Nano 9K buttons are active-low.  S1 resets the CPU.
+        .reset(!btn1),
+        // Expected address is 8000 to ffff,
+        .io_address(io_address),
+        .io_read_enable(io_read_enable),
+        .io_write_enable(io_write_enable),
+        .io_write_data(io_write_data),
+        .io_read_data(io_read_data)
     );
 
     always_ff @(posedge clk) begin
-        if (btn2) begin
-            count <= '0;
-        end else if (btn1) begin
-            count <= count + 1'b1;
+        if (io_write_enable) begin
+            case(io_address[3:0])
+                4'h0: io_registers[0] <= io_write_data;
+                4'h1: io_registers[1] <= io_write_data;
+                4'h2: io_registers[2] <= io_write_data;
+                4'h3: io_registers[3] <= io_write_data;
+                4'h4: io_registers[4] <= io_write_data;
+                4'h5: io_registers[5] <= io_write_data;
+                default: ; // Do nothing for invalid IO write
+            endcase
+        end
+        if (io_read_enable) begin
+            case (io_address[3:0])
+                4'h0: io_read_data <= io_registers[0];
+                4'h1: io_read_data <= io_registers[1];
+                4'h2: io_read_data <= io_registers[2];
+                4'h3: io_read_data <= io_registers[3];
+                4'h4: io_read_data <= io_registers[4];
+                4'h5: io_read_data <= io_registers[5];
+                4'h6: io_read_data <= {15'b0, !btn1};  // Read button state
+                4'h7: io_read_data <= {15'b0, !btn2};  // Read button state
+                default: io_read_data <= 16'h0000;     // Return 0 for invalid
+            endcase
+        end else begin
+            io_read_data <= 16'h0000;
+        end
+
+        if (pwm_counter == 1000) begin
+            pwm_counter <= 0;
+        end else begin
+            pwm_counter <= pwm_counter + 1;
         end
     end
 
-    assign led = ram_load_data[COUNT_WIDTH-1:0];
+    always_comb begin
+        for (int i = 0; i < 6; i++) begin
+            // Tang Nano 9K LEDs are active-low.
+            led[i] = (pwm_counter < io_registers[i]) ? 1'b0 : 1'b1;
+        end
+    end
 endmodule

@@ -2,20 +2,26 @@ set shell := ["zsh", "-cu"]
 
 default: build
 
-build:
+assemble:
+    asm/.venv/bin/potados-asm demo.asm -o rom.hex
+
+build: assemble
     mkdir -p build
-    yosys -p "read_verilog -sv rtl/top.sv; synth_gowin -top top -json build/top.json -family gw2a"
-    nextpnr-himbaechel --json build/top.json --write build/top_pnr.json --device GW2AR-LV18QN88C8/I7 --vopt family=GW2A-18C --vopt cst=constraints/tangnano20k.cst
-    gowin_pack -d GW2A-18C -o build/top.fs build/top_pnr.json
+    # The current OSS CAD Suite apycula packer cannot encode a DSP attribute
+    # emitted for inferred MULT18X18 cells.  Keep MUL functional in LUT/ALU
+    # fabric until that toolchain issue is fixed.
+    yosys -p "read_verilog -sv rtl/top.sv; synth_gowin -top top -json build/top.json -family gw1n -nodsp"
+    nextpnr-himbaechel --json build/top.json --write build/top_pnr.json --device GW1NR-LV9QN88PC6/I5 --vopt family=GW1N-9C --vopt cst=constraints/tangnano9k.cst --freq 27
+    gowin_pack -d GW1N-9C -o build/top.fs build/top_pnr.json
 
 test:
     uv run pytest -q
 
 program: build
-    openFPGALoader -b tangnano20k build/top.fs
+    openFPGALoader -b tangnano9k build/top.fs
 
 flash: build
-    openFPGALoader -b tangnano20k -f build/top.fs
+    openFPGALoader -b tangnano9k -f build/top.fs
 
 clean:
     rm -rf build

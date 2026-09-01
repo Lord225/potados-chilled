@@ -195,7 +195,10 @@ module potados_instruction_decoder(
             default: begin
             end
         endcase
-        return decoded;
+        // Yosys does not support SystemVerilog's procedural `return` in a
+        // function.  Assigning the function name is the portable Verilog and
+        // SystemVerilog form.
+        decode_instruction = decoded;
     endfunction
 
     always_comb begin

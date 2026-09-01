@@ -1,7 +1,8 @@
 
 module potados_rom #(
     parameter ROM_FILE = "rom.hex",
-    parameter LOAD_ROM_FILE = 1'b1
+    parameter LOAD_ROM_FILE = 1'b1,
+    parameter logic [15:0] ROM_SIZE = 16'h7fff
 )(
     input logic        clk,
     
@@ -9,9 +10,8 @@ module potados_rom #(
 
     output logic[15:0] rom_data
 );
-    logic [15:0] memory [16'h0000:16'hffff];
+    logic [15:0] memory [16'h0000:ROM_SIZE];
 
-    integer word_index;
     initial begin
         if (LOAD_ROM_FILE) begin
             $readmemh(ROM_FILE, memory);
@@ -23,7 +23,10 @@ module potados_rom #(
     end
 endmodule
 
-module potados_ram (
+module potados_ram #(
+    parameter logic [15:0] RAM_LOW_ADDRESS = 16'h0000,
+    parameter logic [15:0] RAM_HIGH_ADDRESS = 16'h7fff
+) (
     input logic        clk,
     
     input logic[15:0]  address,
@@ -34,7 +37,7 @@ module potados_ram (
     input logic        load_enable,
     output logic[15:0] load_data
 );
-    logic [15:0] memory [16'h0000:16'hffff];
+    logic [15:0] memory [RAM_LOW_ADDRESS:RAM_HIGH_ADDRESS];
 
     always_ff @(posedge clk) begin
         if (store_enable) begin
@@ -49,8 +52,12 @@ module potados_ram (
 endmodule
 
 // Wrapper for optional future expansion of memory mapped peripherals.
-module potados_memory (
+module potados_memory #(
+    parameter logic [15:0] RAM_LOW_ADDRESS = 16'h0000,
+    parameter logic [15:0] RAM_HIGH_ADDRESS = 16'h7fff
+) (
     input logic        clk,
+    input logic        reset,
     
     input logic[15:0]  address,
 
@@ -58,21 +65,82 @@ module potados_memory (
     input logic[15:0]  store_data,
 
     input logic        load_enable,
-    output logic[15:0] load_data
+    output logic[15:0] load_data,
+
+    output logic [15:0] io_address,
+    output logic        io_read_enable,
+    output logic        io_write_enable,
+    output logic [15:0] io_write_data,
+    input  logic [15:0] io_read_data
 );
-    potados_ram ram_inst (
+    // Wires used by internal RAM instance.
+    logic[15:0] memory_address;
+    logic memory_store_enable;
+    logic[15:0] memory_store_data;
+    logic memory_load_enable;
+    logic[15:0] memory_load_data;
+    logic address_is_ram;
+    logic load_from_io;
+
+
+    potados_ram #(
+        .RAM_LOW_ADDRESS(RAM_LOW_ADDRESS),
+        .RAM_HIGH_ADDRESS(RAM_HIGH_ADDRESS)
+    ) ram_inst (
         .clk(clk),
-        .address(address),
-        .store_enable(store_enable),
-        .store_data(store_data),
-        .load_enable(load_enable),
-        .load_data(load_data)
+        .address(memory_address),
+        .store_enable(memory_store_enable),
+        .store_data(memory_store_data),
+        .load_enable(memory_load_enable),
+        .load_data(memory_load_data)
     );
+
+    always_comb begin
+        // Unsigned subtraction makes an address below RAM_LOW_ADDRESS wrap
+        // above the valid span, so one comparison covers either RAM base.
+        address_is_ram =
+            (address - RAM_LOW_ADDRESS) <= (RAM_HIGH_ADDRESS - RAM_LOW_ADDRESS);
+
+        // The data returned this cycle belongs to the most recently accepted
+        // load, not necessarily to the address of the next request.
+        load_data = load_from_io ? io_read_data : memory_load_data;
+
+        if (address_is_ram) begin
+            memory_address = address;
+            memory_store_enable = store_enable;
+            memory_store_data = store_data;
+            memory_load_enable = load_enable;
+
+            io_address = 16'h0000;
+            io_read_enable = 1'b0;
+            io_write_enable = 1'b0;
+            io_write_data = 16'h0000;
+        end else begin
+            memory_address = 16'h0000;
+            memory_store_enable = 1'b0;
+            memory_store_data = 16'h0000;
+            memory_load_enable = 1'b0;
+
+            io_address = address;
+            io_read_enable = load_enable;
+            io_write_enable = store_enable;
+            io_write_data = store_data;
+        end
+    end
+
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset) begin
+            load_from_io <= 1'b0;
+        end else if (load_enable) begin
+            load_from_io <= !address_is_ram;
+        end
+    end
 endmodule
 
 module potados_program_memory #(
     parameter ROM_FILE = "rom.hex",
-    parameter LOAD_ROM_FILE = 1'b1
+    parameter LOAD_ROM_FILE = 1'b1,
+    parameter logic [15:0] ROM_SIZE = 16'h7fff
 )(
     input logic        clk,
     input logic        reset,
@@ -127,7 +195,8 @@ module potados_program_memory #(
 
     potados_rom #(
         .ROM_FILE(ROM_FILE),
-        .LOAD_ROM_FILE(LOAD_ROM_FILE)
+        .LOAD_ROM_FILE(LOAD_ROM_FILE),
+        .ROM_SIZE(ROM_SIZE)
     ) rom_inst (
         .clk(clk),
         .address(pc),
