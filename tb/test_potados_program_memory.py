@@ -13,7 +13,7 @@ from cocotb_tools.runner import get_runner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RTL_DIR = PROJECT_ROOT / "rtl"
-ROM_IMAGE = PROJECT_ROOT / "rom.hex"
+ROM_IMAGE = PROJECT_ROOT / "tb" / "programs" / "program_memory_rom.hex"
 SIM_BUILD = PROJECT_ROOT / "build" / "sim" / "potados_program_memory"
 
 Dut = Any
@@ -59,6 +59,7 @@ async def _expect_short(dut: Dut, expected_word: int) -> None:
     assert int(dut.low_valid.value) == 1
     assert int(dut.low_instruction.value) == expected_word
     assert int(dut.high_instruction.value) == 0
+
 
 async def _accept_instruction(dut: Dut) -> None:
     """Accept the currently held complete instruction and start the next fetch."""

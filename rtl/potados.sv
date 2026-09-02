@@ -81,7 +81,6 @@ module potados #(
 
     // Register file and scoreboard state
     register_file_t registers;
-    register_status_t register_status;
     
     // Pipeline stall state
     logic decode_declare_stall;
@@ -112,11 +111,7 @@ module potados #(
     // Request that sets the stack pointer update logic for the current instruction.
     stack_pointer_request_t stack_pointer_request;
 
-    // Scoreboard inputs are masks because POP can reserve both DST and SP.
-    logic [7:0] scoreboard_reserve_write_mask;
-    logic [7:0] scoreboard_release_write_mask;
-    logic       decode_accept;
-
+    logic decode_accept;
 
     potados_program_memory #(
         .ROM_FILE(ROM_FILE),
@@ -144,6 +139,25 @@ module potados #(
         .low_valid(fetched_instruction_valid)
     );
 
+    potados_memory #(
+        .RAM_LOW_ADDRESS(RAM_LOW_ADDRESS),
+        .RAM_HIGH_ADDRESS(RAM_HIGH_ADDRESS)
+    ) potados_memory (
+        .clk         (clk),
+        .reset       (reset),
+        .address     (ram_address),
+        .store_enable(ram_store_enable),
+        .store_data  (ram_store_data),
+        .load_enable (ram_load_enable),
+        .load_data   (ram_load_data),
+
+        .io_address     (io_address),
+        .io_read_enable (io_read_enable),
+        .io_write_enable(io_write_enable),
+        .io_write_data  (io_write_data),
+        .io_read_data   (io_read_data)
+    );
+
     potados_instruction_decoder instruction_decoder_inst (
         .instruction_low(fetched_instruction_low),
         .instruction_high(fetched_instruction_high),
@@ -163,7 +177,6 @@ module potados #(
 
         .register_read_request(register_read_request),
         .register_read_response(register_read_response),
-        .register_status(register_status),
 
         .execute_forward_stage(memory_stage_next),
         .current_memory_stage(memory_stage),
@@ -224,65 +237,13 @@ module potados #(
     // accepts the instruction into execute. Writeback releases reservations
     // when the corresponding architectural updates commit.
     always_comb begin
-
         // Accept next instruction to decode only if:
         // 1. Execute stage is ready to accept it.
         // 2. Decode stage is not declaring a stall.
         // 3. No other stage is declaring a stall.
         decode_accept = execute_stage_next.valid && !decode_declare_stall && (pipeline_stall == PIPELINE_STALL_NONE);
-
-
-        // When to reserve the register (depends on execute stage)
-        scoreboard_reserve_write_mask = '0;
-        if (decode_accept) begin
-            if (execute_stage_next.writeback_source != WB_NONE) begin
-                scoreboard_reserve_write_mask[execute_stage_next.dst] = 1'b1;
-            end
-            if (execute_stage_next.stack_pointer_op != STACK_POINTER_NONE) begin
-                scoreboard_reserve_write_mask[3'b001] = 1'b1;
-            end
-        end
-        scoreboard_reserve_write_mask[3'b000] = 1'b0;
-
-        // When to release the register (depends on writeback stage)
-        scoreboard_release_write_mask = '0;
-        if (register_write_request.write_enable) begin
-            scoreboard_release_write_mask[register_write_request.write_address] = 1'b1;
-        end
-        if (stack_pointer_request.operation != STACK_POINTER_NONE) begin
-            scoreboard_release_write_mask[3'b001] = 1'b1;
-        end
-        scoreboard_release_write_mask[3'b000] = 1'b0;
     end
 
-    // TODO Rebuild more readable, maybe explicit registers src, dst, sp flags?
-    // TODO Should be possible to replace with a fowrarding logic :3
-    potados_scoreboard scoreboard_inst (
-        .clk(clk),
-        .reset(reset),
-        .reserve_write_mask(scoreboard_reserve_write_mask),
-        .release_write_mask(scoreboard_release_write_mask),
-        .register_status(register_status)
-    );
-
-    potados_memory #(
-        .RAM_LOW_ADDRESS(RAM_LOW_ADDRESS),
-        .RAM_HIGH_ADDRESS(RAM_HIGH_ADDRESS)
-    ) potados_memory (
-        .clk         (clk),
-        .reset       (reset),
-        .address     (ram_address),
-        .store_enable(ram_store_enable),
-        .store_data  (ram_store_data),
-        .load_enable (ram_load_enable),
-        .load_data   (ram_load_data),
-
-        .io_address     (io_address),
-        .io_read_enable (io_read_enable),
-        .io_write_enable(io_write_enable),
-        .io_write_data  (io_write_data),
-        .io_read_data   (io_read_data)
-    );
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin

@@ -243,7 +243,7 @@ module potados_decode_stage(
     input register_read_response_t  register_read_response,
     // Kept only while the old decoder-case call sites are simplified. It is
     // no longer consulted for normal-register hazards.
-    input register_status_t         register_status,
+    // input register_status_t         register_status,
 
     // The execute result is the youngest in-flight producer, followed by the
     // registered memory and writeback stages.
@@ -394,9 +394,6 @@ module potados_decode_stage(
     function automatic logic check_should_stall(
         input operand_result_t operand_a,
         input operand_result_t operand_b,
-        input register_status_t unused_status,
-        input logic [2:0] unused_src_a,
-        input logic [2:0] unused_src_b,
         input logic src_a_is_used,
         input logic src_b_is_used
     );
@@ -500,9 +497,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         source_a_used,
                         source_b_used
                     );
@@ -517,9 +511,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         source_a_used,
                         source_b_used
                     );
@@ -534,9 +525,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b0 
                     );
@@ -551,9 +539,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b0 
                     );
@@ -569,9 +554,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b0,
                         1'b1 
                     );
@@ -601,9 +583,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b0 
                     );
@@ -619,9 +598,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b1 
                     );
@@ -638,9 +614,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        3'b001, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b0 
                     );
@@ -657,9 +630,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        3'b001, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b1 
                     );
@@ -675,9 +645,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         1'b1,
                         1'b1 
                     );
@@ -713,9 +680,6 @@ module potados_decode_stage(
                             should_stall = check_should_stall(
                                 result_a, 
                                 result_b, 
-                                register_status, 
-                                3'b001, 
-                                decoded_instruction.src_b,
                                 1'b1,
                                 1'b1 
                             );
@@ -732,9 +696,6 @@ module potados_decode_stage(
                             should_stall = check_should_stall(
                                 result_a, 
                                 result_b, 
-                                register_status, 
-                                3'b001, 
-                                decoded_instruction.src_b,
                                 1'b1,
                                 1'b0 
                             );
@@ -753,9 +714,6 @@ module potados_decode_stage(
                             should_stall = check_should_stall(
                                 result_a, 
                                 result_b, 
-                                register_status, 
-                                decoded_instruction.src_a, 
-                                decoded_instruction.src_b,
                                 1'b0,
                                 1'b1 
                             );
@@ -768,9 +726,6 @@ module potados_decode_stage(
                             should_stall = check_should_stall(
                                 result_a, 
                                 result_b, 
-                                register_status, 
-                                decoded_instruction.src_a, 
-                                decoded_instruction.src_b,
                                 1'b1,
                                 1'b0 
                             );
@@ -792,9 +747,6 @@ module potados_decode_stage(
                     should_stall = check_should_stall(
                         result_a, 
                         result_b, 
-                        register_status, 
-                        decoded_instruction.src_a, 
-                        decoded_instruction.src_b,
                         source_a_used,
                         source_b_used
                     );
@@ -894,7 +846,6 @@ module instruction_decoder_stage_testbech_helper(
         .decoded_instruction(decoded_instruction),
         .register_read_request(register_read_request),
         .register_read_response(register_read_response),
-        .register_status(register_status),
         .execute_forward_stage('0),
         .current_memory_stage('0),
         .writeback_forward(register_write_request),

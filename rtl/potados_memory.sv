@@ -10,6 +10,7 @@ module potados_rom #(
 
     output logic[15:0] rom_data
 );
+    localparam integer ROM_ADDRESS_WIDTH = (ROM_SIZE == 0) ? 1 : $clog2(ROM_SIZE + 1);
     logic [15:0] memory [16'h0000:ROM_SIZE];
 
     initial begin
@@ -19,7 +20,7 @@ module potados_rom #(
     end
 
     always_ff @(posedge clk) begin
-        rom_data <= memory[address];
+        rom_data <= memory[address[ROM_ADDRESS_WIDTH-1:0]];
     end
 endmodule
 
@@ -96,8 +97,7 @@ module potados_memory #(
     always_comb begin
         // Unsigned subtraction makes an address below RAM_LOW_ADDRESS wrap
         // above the valid span, so one comparison covers either RAM base.
-        address_is_ram =
-            (address - RAM_LOW_ADDRESS) <= (RAM_HIGH_ADDRESS - RAM_LOW_ADDRESS);
+        address_is_ram = (address - RAM_LOW_ADDRESS) <= (RAM_HIGH_ADDRESS - RAM_LOW_ADDRESS);
 
         // The data returned this cycle belongs to the most recently accepted
         // load, not necessarily to the address of the next request.
