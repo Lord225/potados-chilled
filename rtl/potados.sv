@@ -165,6 +165,11 @@ module potados #(
         .register_read_response(register_read_response),
         .register_status(register_status),
 
+        .execute_forward_stage(memory_stage_next),
+        .current_memory_stage(memory_stage),
+        .writeback_forward(register_write_request),
+        .current_writeback_stage(writeback_stage),
+
         .should_stall(decode_declare_stall),
 
         .execute_stage(execute_stage_next)
@@ -251,6 +256,7 @@ module potados #(
     end
 
     // TODO Rebuild more readable, maybe explicit registers src, dst, sp flags?
+    // TODO Should be possible to replace with a fowrarding logic :3
     potados_scoreboard scoreboard_inst (
         .clk(clk),
         .reset(reset),

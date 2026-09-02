@@ -55,7 +55,9 @@ bubble_sort:
 
 outer_pass:
     MOV R5, R2            ; pointer = array base
-    LI R6, 5              ; five adjacent comparisons
+    ; LI R6, 5            ; five adjacent comparisons
+    MOV R6, R4            ; number of comparisons = number of remaining passes
+
 
 inner_pass:
     LD R3, [R5 + 0]       ; left value
@@ -82,6 +84,9 @@ no_swap:
     POP R5
     POP R4
     RET
+
+
+
 delay:
     PUSH R4
     LI R4, 0xFFFF

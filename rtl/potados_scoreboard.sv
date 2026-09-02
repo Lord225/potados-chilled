@@ -4,7 +4,7 @@
 `timescale 1ns / 1ns
 `include "potados_common.sv"
 
-
+// TODO: Remove
 // TODO: Rewrite to make it more readable & easy to work with
 // 1) All inputs explicit, let's assume 3 channels for reserve and release
 // 2) Must add memory adress reservation
