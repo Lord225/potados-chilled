@@ -5,6 +5,7 @@ by Cocotb traces and by a future software emulator.
 """
 
 from __future__ import annotations
+from typing import Any
 
 
 MEMORY_NONE = 0
@@ -32,7 +33,8 @@ def _execute_cell(stage: int) -> str:
     if not valid:
         return ""
 
-    destination = _field(stage, 18, 3)
+    # execute_stage_t: dst occupies bits [25:23].
+    destination = _field(stage, 23, 3)
     memory_op = _field(stage, 8, 2)
     writeback_source = _field(stage, 1, 3)
     halt = _field(stage, 0, 1)
@@ -60,7 +62,9 @@ def _memory_cell(stage: int) -> str:
 
     address = _field(stage, 58, 16)
     write_data = _field(stage, 42, 16)
-    destination = _field(stage, 3, 3)
+    # writeback_stage_t: writeback_source is [2:0], stack op is [4:3],
+    # and dst occupies bits [7:5].
+    destination = _field(stage, 5, 3)
     memory_op = _field(stage, 8, 2)
     writeback_source = _field(stage, 0, 3)
 
@@ -92,6 +96,32 @@ def _writeback_cell(stage: int, ram_load_data: int) -> str:
     if writeback_source == WB_RETURN_ADDRESS:
         return f"JAL → {_register_name(destination)}"
     return "pass"
+
+
+def dump_pipeline(dut: Any) -> str:
+    return format_pipeline(
+        int(dut.execute_stage_next.value),
+        int(dut.execute_stage.value),
+        int(dut.memory_stage.value),
+        int(dut.writeback_stage.value),
+        ram_load_data=int(dut.ram_load_data.value),
+    )
+
+
+def register(register_file: int, address: int) -> int:
+    return (register_file >> ((7 - address) * 16)) & 0xFFFF
+
+
+def ram(dut: Any, address: int) -> int:
+    return int(dut.potados_memory.ram_inst.memory[address].value)
+
+
+def dump_registers(dut: Any) -> str:
+    registers = int(dut.registers_out.value)
+    out = []
+    for i in range(8):
+        out.append(f"R{i}={register(registers, i):04X}")
+    return ",".join(out)
 
 
 def format_pipeline(

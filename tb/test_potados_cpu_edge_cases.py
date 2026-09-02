@@ -11,6 +11,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 from cocotb_tools.runner import get_runner
 from emulator import format_pipeline
+from emulator.pipeline import dump_pipeline, dump_registers, ram, register
 from potados_asm import assemble_file
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -20,32 +21,6 @@ SIM_BUILD = PROJECT_ROOT / "build" / "sim" / "potados_cpu_edge_cases"
 
 Dut = Any
 Runner = Any
-
-
-def _register(register_file: int, address: int) -> int:
-    return (register_file >> ((7 - address) * 16)) & 0xFFFF
-
-
-def _ram(dut: Dut, address: int) -> int:
-    return int(dut.potados_memory.ram_inst.memory[address].value)
-
-
-def _dump_registers(dut: Dut) -> str:
-    registers = int(dut.registers_out.value)
-    out = []
-    for i in range(8):
-        out.append(f"R{i}={_register(registers, i):04X}")
-    return ",".join(out)
-
-
-def _dump_pipeline(dut: Dut) -> str:
-    return format_pipeline(
-        int(dut.execute_stage_next.value),
-        int(dut.execute_stage.value),
-        int(dut.memory_stage.value),
-        int(dut.writeback_stage.value),
-        ram_load_data=int(dut.ram_load_data.value),
-    )
 
 
 def _load_program(dut: Dut, program: str) -> None:
@@ -74,9 +49,9 @@ async def _run_until_halt(dut: Dut, *, maximum_cycles: int = 96) -> None:
             "Cycle %d: HALT=%d, Registers=%s, Ram[16]=%04X\n%s",
             _,
             int(dut.potados_done.value),
-            _dump_registers(dut),
-            _ram(dut, 16),
-            _dump_pipeline(dut),
+            dump_registers(dut),
+            ram(dut, 16),
+            dump_pipeline(dut),
         )
         if int(dut.potados_done.value):
             return
@@ -88,7 +63,7 @@ async def raw_alu_dependency_uses_the_previous_result(dut: Dut) -> None:
     """LLI R2, 3; ADDI R2, 1 must produce R2 == 4 without hand-inserted NOPs."""
     await _reset(dut, "edge_raw_lli_addi.asm")
     await _run_until_halt(dut)
-    assert _register(int(dut.registers_out.value), 0b010) == 0x0004
+    assert register(int(dut.registers_out.value), 0b010) == 0x0004
 
 
 @cocotb.test()
@@ -96,7 +71,7 @@ async def store_then_load_returns_the_stored_word(dut: Dut) -> None:
     """A synchronous RAM response must be retained until LD writeback."""
     await _reset(dut, "edge_store_load.asm")
     await _run_until_halt(dut)
-    assert _register(int(dut.registers_out.value), 0b100) == 0x00A5
+    assert register(int(dut.registers_out.value), 0b100) == 0x00A5
 
 
 @cocotb.test()
@@ -106,11 +81,11 @@ async def back_to_back_memory_operations_preserve_load_alignment(dut: Dut) -> No
     await _run_until_halt(dut)
 
     registers = int(dut.registers_out.value)
-    assert _ram(dut, 32) == 0x0011
-    assert _ram(dut, 95) == 0x00A5
-    assert _register(registers, 0b101) == 0x0011
-    assert _register(registers, 0b110) == 0x00A5
-    assert _register(registers, 0b111) == 0x0011
+    assert ram(dut, 32) == 0x0011
+    assert ram(dut, 95) == 0x00A5
+    assert register(registers, 0b101) == 0x0011
+    assert register(registers, 0b110) == 0x00A5
+    assert register(registers, 0b111) == 0x0011
 
 
 @cocotb.test()
@@ -121,11 +96,11 @@ async def alternating_store_loads_at_one_address_return_each_new_value(
     await _reset(dut, "edge_memory_alternating_same_address.asm")
 
     observed_r6: list[int] = []
-    previous_r6 = _register(int(dut.registers_out.value), 0b110)
+    previous_r6 = register(int(dut.registers_out.value), 0b110)
     for _ in range(96):
         await RisingEdge(dut.clk)
         await Timer(1, unit="ns")
-        current_r6 = _register(int(dut.registers_out.value), 0b110)
+        current_r6 = register(int(dut.registers_out.value), 0b110)
         if current_r6 != previous_r6:
             observed_r6.append(current_r6)
             previous_r6 = current_r6
@@ -135,9 +110,9 @@ async def alternating_store_loads_at_one_address_return_each_new_value(
         raise AssertionError("CPU did not reach HALT within 96 cycles")
 
     registers = int(dut.registers_out.value)
-    assert _ram(dut, 64) == 0x0056
+    assert ram(dut, 64) == 0x0056
     assert observed_r6 == [0x0012, 0x0056]
-    assert _register(registers, 0b111) == 0x0034
+    assert register(registers, 0b111) == 0x0034
 
 
 @cocotb.test()
@@ -146,8 +121,8 @@ async def push_then_pop_preserves_value_and_stack_pointer(dut: Dut) -> None:
     await _reset(dut, "edge_push_pop.asm")
     await _run_until_halt(dut)
     registers = int(dut.registers_out.value)
-    assert _register(registers, 0b001) == 0x0020
-    assert _register(registers, 0b011) == 0x00A5
+    assert register(registers, 0b001) == 0x0020
+    assert register(registers, 0b011) == 0x00A5
 
 
 @cocotb.test()
@@ -159,13 +134,13 @@ async def dense_stack_program_is_lifo_and_supports_sp_relative_memory(
     await _run_until_halt(dut, maximum_cycles=192)
 
     registers = int(dut.registers_out.value)
-    assert _register(registers, 0b001) == 0x0020
-    assert _register(registers, 0b100) == 0x0022
-    assert _register(registers, 0b101) == 0x0011
-    assert _register(registers, 0b111) == 0x00A5
-    assert _ram(dut, 0x20) == 0x0011
-    assert _ram(dut, 0x21) == 0x0022
-    assert _ram(dut, 0x1F) == 0x00A5
+    assert register(registers, 0b001) == 0x0020
+    assert register(registers, 0b100) == 0x0022
+    assert register(registers, 0b101) == 0x0011
+    assert register(registers, 0b111) == 0x00A5
+    assert ram(dut, 0x20) == 0x0011
+    assert ram(dut, 0x21) == 0x0022
+    assert ram(dut, 0x1F) == 0x00A5
 
 
 @cocotb.test()
@@ -175,8 +150,8 @@ async def recursive_fibonacci_restores_every_stack_frame(dut: Dut) -> None:
     await _run_until_halt(dut, maximum_cycles=1024)
 
     registers = int(dut.registers_out.value)
-    assert _register(registers, 0b001) == 0x0040
-    assert _register(registers, 0b010) == 8
+    assert register(registers, 0b001) == 0x0040
+    assert register(registers, 0b010) == 8
 
 
 @cocotb.test()
@@ -184,7 +159,7 @@ async def unconditional_jump_discards_the_fallthrough_path(dut: Dut) -> None:
     """JMP must execute its target, not an already fetched fallthrough HALT."""
     await _reset(dut, "edge_jump_unconditional.asm")
     await _run_until_halt(dut)
-    assert _register(int(dut.registers_out.value), 0b010) == 0x002A
+    assert register(int(dut.registers_out.value), 0b010) == 0x002A
 
 
 @cocotb.test()
@@ -192,7 +167,7 @@ async def taken_conditional_jump_discards_the_fallthrough_path(dut: Dut) -> None
     """JE with equal operands must select its target and flush fallthrough."""
     await _reset(dut, "edge_jump_taken.asm")
     await _run_until_halt(dut)
-    assert _register(int(dut.registers_out.value), 0b100) == 0x002A
+    assert register(int(dut.registers_out.value), 0b100) == 0x002A
 
 
 @cocotb.test()
@@ -200,7 +175,7 @@ async def not_taken_conditional_jump_keeps_the_fallthrough_path(dut: Dut) -> Non
     """JE with unequal operands must not redirect fetch to its target."""
     await _reset(dut, "edge_jump_not_taken.asm")
     await _run_until_halt(dut)
-    assert _register(int(dut.registers_out.value), 0b100) == 0x0011
+    assert register(int(dut.registers_out.value), 0b100) == 0x0011
 
 
 @cocotb.test()
@@ -294,9 +269,7 @@ def test_dense_stack_program_is_lifo_and_supports_sp_relative_memory(
 def test_recursive_fibonacci_restores_every_stack_frame(
     edge_case_runner: Runner,
 ) -> None:
-    _run_cocotb_test(
-        edge_case_runner, "recursive_fibonacci_restores_every_stack_frame"
-    )
+    _run_cocotb_test(edge_case_runner, "recursive_fibonacci_restores_every_stack_frame")
 
 
 def test_unconditional_jump_discards_the_fallthrough_path(

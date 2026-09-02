@@ -5,7 +5,6 @@
 `include "potados_common.sv"
 `include "potados_instruction_decoder.sv"
 `include "potados_registers.sv"
-`include "potados_scoreboard.sv"
 `include "potados_alu.sv"
 `include "potados_memory.sv"
 `include "potados_execute.sv"
@@ -53,8 +52,6 @@ module potados #(
     logic        fetched_instruction_valid;
     logic        fetched_high_valid;
 
-    // Decoded form of the fetched instruction.
-    decoded_instruction_t decoded_instruction;
 
     // Acknowledges that decode accepted the complete instruction presented by
     // program memory, allowing it to begin the following fetch.
@@ -81,6 +78,9 @@ module potados #(
 
     // Register file and scoreboard state
     register_file_t registers;
+
+    // Decoded form of the fetched instruction.
+    decoded_instruction_t decoded_instruction;
     
     // Pipeline stall state
     logic decode_declare_stall;
@@ -89,7 +89,6 @@ module potados #(
     logic writeback_declare_stall;
     pipeline_stall_t pipeline_stall;
 
-    // TODO: Add forwording logic
     // Pipeline stage states
     execute_stage_t execute_stage;
     execute_stage_t execute_stage_next;

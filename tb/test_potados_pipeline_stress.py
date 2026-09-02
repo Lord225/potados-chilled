@@ -12,6 +12,8 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotb_tools.runner import get_runner
 from potados_asm import assemble_file
 
+from emulator.pipeline import dump_pipeline, dump_registers
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RTL_DIR = PROJECT_ROOT / "rtl"
 PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
@@ -47,6 +49,10 @@ async def _run_program(dut: Dut, program: str, *, maximum_cycles: int = 160) -> 
         await Timer(1, unit="ns")
         if int(dut.potados_done.value):
             return int(dut.registers_out.value)
+        dut._log.info(
+            "\n%s",
+            dump_pipeline(dut),
+        )
 
     raise AssertionError(f"CPU did not reach HALT within {maximum_cycles} cycles")
 
@@ -119,19 +125,29 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
             test_filter=testcase,
         )
     except SystemExit as exc:
-        pytest.fail(f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False)
+        pytest.fail(
+            f"cocotb test {testcase!r} failed with exit code {exc.code}", pytrace=False
+        )
 
 
 def test_repeated_addi_accumulates_on_one_register(pipeline_runner: Runner) -> None:
     _run_cocotb_test(pipeline_runner, "repeated_addi_accumulates_on_one_register")
 
 
-def test_same_register_on_both_read_ports_tracks_latest_value(pipeline_runner: Runner) -> None:
-    _run_cocotb_test(pipeline_runner, "same_register_on_both_read_ports_tracks_latest_value")
+def test_same_register_on_both_read_ports_tracks_latest_value(
+    pipeline_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        pipeline_runner, "same_register_on_both_read_ports_tracks_latest_value"
+    )
 
 
-def test_alternating_register_dependencies_remain_independent(pipeline_runner: Runner) -> None:
-    _run_cocotb_test(pipeline_runner, "alternating_register_dependencies_remain_independent")
+def test_alternating_register_dependencies_remain_independent(
+    pipeline_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        pipeline_runner, "alternating_register_dependencies_remain_independent"
+    )
 
 
 def test_back_to_back_writes_commit_in_program_order(pipeline_runner: Runner) -> None:
