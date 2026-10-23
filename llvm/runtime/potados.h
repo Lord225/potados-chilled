@@ -1,29 +1,20 @@
 #ifndef POTADOS_CHILLED_RUNTIME_H
 #define POTADOS_CHILLED_RUNTIME_H
 
-/* The MSP430 frontend supplies the same integer sizes and pointer width.
- * POTADOS instruction selection and calling conventions are implemented by
- * this project's target, independently of MSP430 code generation.
+/* Native POTADOS C has CHAR_BIT=16. A char, short, int, and pointer each
+ * occupy one 16-bit addressable cell; long uses two and long long four.
+ * No potados_u8/potados_i8 aliases exist: an exact 8-bit C type is unavailable.
  */
-typedef unsigned char potados_u8;
-typedef signed char potados_i8;
-typedef unsigned short potados_u16;
-typedef short potados_i16;
+typedef unsigned int potados_u16;
+typedef int potados_i16;
 typedef unsigned long potados_u32;
 typedef long potados_i32;
 typedef unsigned long long potados_u64;
 typedef long long potados_i64;
 
-/* These functions take native CPU WORD addresses. Ordinary C pointers use
- * byte addresses and cannot be used to address the CPU's upper-half MMIO.
- * The board's LED registers occupy word addresses 0x8000..0x8005.
+/* Optional compatibility helpers. Ordinary volatile pointers reach the same
+ * native word bus directly: ((volatile int *)0x8000)[1] addresses 0x8001.
  */
-#ifdef __cplusplus
-extern "C" {
-#endif
 potados_u16 potados_mmio_read(potados_u16 word_address);
 void potados_mmio_write(potados_u16 word_address, potados_u16 value);
-#ifdef __cplusplus
-}
-#endif
 #endif

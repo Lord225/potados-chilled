@@ -77,6 +77,16 @@ PROGRAM_DIR = PROJECT_ROOT / "tb" / "programs"
         ("FTOI R4, R3", [0xE983]),
         ("FTOU R4, R3", [0xE9C3]),
         ("HALT", [0xF000]),
+        ("HALT NO_MESSAGE", [0xF000]),
+        ("HALT NONE", [0xF000]),
+        ("HALT SHUT", [0xF001]),
+        ("HALT PASS", [0xF002]),
+        ("HALT WAIT", [0xF003]),
+        ("HALT ERROR", [0xF004]),
+        ("HALT BREAK", [0xF005]),
+        ("HALT ASSERT", [0xF006]),
+        ("halt pass", [0xF002]),
+        ("HALT 7", [0xF007]),
     ],
 )
 def test_instruction_golden_encodings(source: str, expected: list[int]) -> None:
@@ -243,6 +253,8 @@ def test_cpu_program_sources_assemble(program: Path) -> None:
     ("source", "message"),
     [
         ("ADDI R2, 128", "immediate out of range"),
+        ("HALT -1", "halt message out of range [0..7]"),
+        ("HALT 8", "halt message out of range [0..7]"),
         ("SH R2, R2, -17", "shift amount out of range [-16..15]"),
         ("SH R2, R2, 16", "shift amount out of range [-16..15]"),
         ("LD R2, R3, -33", "displacement out of range"),

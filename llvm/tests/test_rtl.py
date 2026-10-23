@@ -20,7 +20,7 @@ RTL_PROGRAMS = (
         volatile u16 a=0xFEDC, b=0xBEEF, shift=5;
         int main(void) { return (u16)(a*b) ^ (u16)(a << shift) ^ (b >> shift); }
     """, ((0xFEDC * 0xBEEF) ^ (0xFEDC << 5) ^ (0xBEEF >> 5)) & 0xFFFF),
-    ("bytes_and_calls", """
+    ("characters_and_calls", """
         typedef unsigned short u16;
         volatile unsigned char values[]={0x81,0x12,0xFF,0x7F};
         __attribute__((noinline)) u16 sum(u16 n) {
@@ -64,11 +64,59 @@ def test_compiled_program_on_rtl(
         if name == "multiply_and_shift":
             assert any(event.fetch_accepted and (event.fetch_low & 0xF1C0) == 0x01C0
                        for event in records), "Expanded multiplication should execute native MUL"
-        elif name == "bytes_and_calls":
-            word_address = program.symbols["values"] // 2
-            assert list(cpu.ram[word_address:word_address + 2]) == [0xE281, 0x7FFF]
-            assert any(write.address == word_address and write.value == 0xE281 for write in writes)
+        elif name == "characters_and_calls":
+            word_address = program.symbols["values"]
+            assert list(cpu.ram[word_address:word_address + 4]) == [0x81, 0xE2, 0xFF, 0x7F]
+            assert any(write.address == word_address + 1 and write.value == 0xE2 for write in writes)
             assert any(write.address >= 0x7E00 for write in writes), "Recursive calls must save real stack state"
         else:
             stack_addresses = {write.address for write in writes if write.address >= 0x7000}
             assert len(stack_addresses) >= 4, "Outgoing arguments, locals, and links must reach physical RAM"
+
+
+@pytest.mark.parametrize("opt", ["O0", "O1", "O2", "O3", "Os"])
+def test_native_c_pointer_mmio_addresses_reach_the_real_bus(
+    compile_program: Callable[..., Path], tmp_path: Path, opt: str,
+) -> None:
+    source = """
+        _Static_assert(sizeof(char) == 1, "native C byte");
+        _Static_assert(sizeof(int) == 1, "16-bit int");
+        _Static_assert(sizeof(void *) == 1, "16-bit pointer");
+        _Static_assert(__CHAR_BIT__ == 16, "16-bit char");
+        int main(void) {
+            volatile int *io = (volatile int *)0x8000;
+            io[0] = 42;
+            io[1] = 99;
+            return io[0] == 42 && io[1] == 99 && (unsigned short)&io[1] == 0x8001;
+        }
+    """
+    output = compile_program(source, tmp_path, opt=opt, name="direct_pointer_mmio")
+    records = []
+    with CPU(assemble_file(output)) as cpu:
+        cpu.run(max_cycles=200_000, trace=records.append)
+        assert cpu.halted and cpu.registers[2] == 1
+        assert cpu.registers[1] == 0x7F00
+        assert cpu.io_writes == [(0x8000, 42), (0x8001, 99)]
+        reads = {(read.address, read.value) for event in records
+                 for read in event.memory_reads if read.io}
+        assert {(0x8000, 42), (0x8001, 99)} <= reads
+
+
+@pytest.mark.parametrize("opt", ["O0", "O2", "Oz"])
+def test_native_pointer_parity_is_not_inferred_from_llvm_storage_alignment(
+    compile_program: Callable[..., Path], tmp_path: Path, opt: str,
+) -> None:
+    source = """
+        volatile unsigned int head = 42;
+        volatile unsigned int tail = 99;
+        int main(void) { return (unsigned int)&tail & 1; }
+    """
+    output = compile_program(source, tmp_path, opt=opt, name="native_pointer_parity")
+    program = assemble_file(output)
+    assert program.symbols["tail"] == program.symbols["head"] + 1
+    assert program.symbols["tail"] & 1, "The regression requires an odd native address"
+    with CPU(program) as cpu:
+        cpu.run(max_cycles=1000)
+        assert cpu.registers[2] == program.symbols["tail"] & 1
+        assert cpu.ram[program.symbols["head"]] == 42
+        assert cpu.ram[program.symbols["tail"]] == 99

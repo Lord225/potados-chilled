@@ -1,4 +1,4 @@
-"""Full-width checks for compiled arithmetic runtime and packed memory helpers."""
+"""Full-width checks for compiled arithmetic runtime and native-cell memory helpers."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,15 +15,14 @@ MASK64 = (1 << 64) - 1
 
 def read_u64(cpu: CPU, program: AssemblyResult, name: str, index: int = 0) -> int:
     """Reconstruct all 64 result bits from physical little-endian RAM words."""
-    address = program.symbols[name] // 2 + index * 4
+    address = program.symbols[name] + index * 4
     ram = cpu.ram
     return sum(ram[address + word] << (16 * word) for word in range(4))
 
 
-def read_bytes(cpu: CPU, program: AssemblyResult, name: str, count: int) -> list[int]:
+def read_cells(cpu: CPU, program: AssemblyResult, name: str, count: int) -> list[int]:
     base = program.symbols[name]
-    ram = cpu.ram
-    return [(ram[(base + index) // 2] >> (8 * ((base + index) & 1))) & 255 for index in range(count)]
+    return list(cpu.ram[base:base + count])
 
 
 def signed64(value: int) -> int:
@@ -141,14 +140,14 @@ def test_compiled_variable_wide_shifts_and_wide_return_abi(
 
 
 @pytest.mark.parametrize("opt", ["O0", "O2"])
-def test_compiled_memory_helpers_preserve_packed_neighbors_and_overlap(
+def test_compiled_memory_helpers_preserve_native_cells_and_overlap(
     compile_program: Callable[..., Path], tmp_path: Path, opt: str,
 ) -> None:
     source = """
         void *memcpy(void *, const void *, unsigned short);
         void *memmove(void *, const void *, unsigned short);
         void *memset(void *, int, unsigned short);
-        unsigned char source[] = {0x81,0x02,0xFE,0x7F,0x55,0xAA,1,2,3,4,5,6};
+        unsigned char source[] = {0xAB81,0x1202,0xFEFE,0x7F7F,0x5555,0xAAAA,1,2,3,4,5,6};
         unsigned char result[24];
         volatile unsigned short count = 12;
         volatile unsigned short pointer_results;
@@ -165,18 +164,18 @@ def test_compiled_memory_helpers_preserve_packed_neighbors_and_overlap(
             return 42;
         }
     """
-    expected = [0x34] * 24
-    initial = [0x81, 0x02, 0xFE, 0x7F, 0x55, 0xAA, 1, 2, 3, 4, 5, 6]
+    expected = [0x1234] * 24
+    initial = [0xAB81, 0x1202, 0xFEFE, 0x7F7F, 0x5555, 0xAAAA, 1, 2, 3, 4, 5, 6]
     expected[1:13] = initial
     expected[3:15] = expected[1:13]
     expected[1:13] = expected[3:15]
-    expected[5:8] = [0xFF] * 3
+    expected[5:8] = [0xFFFF] * 3
     output = compile_program(source, tmp_path, opt=opt, runtime=True, name="memory_helpers")
     program = assemble_file(output)
     with CPU(program) as cpu:
         cpu.run(max_cycles=4_000_000)
-        assert read_bytes(cpu, program, "result", 24) == expected
-        pointer_address = program.symbols["pointer_results"] // 2
+        assert read_cells(cpu, program, "result", 24) == expected
+        pointer_address = program.symbols["pointer_results"]
         assert cpu.ram[pointer_address] == 0x7F
         assert cpu.registers[2] == 42
         assert cpu.registers[1] == 0x7F00

@@ -44,6 +44,19 @@ def tool_version(executable: str) -> int:
     return int(match.group(1))
 
 
+def compile_native_c(source: Path, output: Path, *, clang: str, optimization: str) -> Path:
+    """Use the word-aware C frontend; Clang supplies preprocessing only."""
+    path = str(ROOT / "potados-frontend/src")
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    try:
+        from potados_frontend import compile_c
+    except ImportError as exc:
+        raise RuntimeError("native frontend dependencies are missing; run uv sync --project llvm") from exc
+    return compile_c(source, output, clang=clang, optimization=optimization,
+                     include_dirs=[ROOT / "runtime", ROOT / "potados-frontend/include"])
+
+
 def check_entry(ir: Path, flags: list[str]) -> None:
     """Give a useful error before code generation of a non-runnable module."""
     entry = "main"
@@ -71,9 +84,24 @@ def check_data_layout(text: str) -> None:
     # the accepted layout below, before optimization, without editing IR text.
     match = re.search(r'^\s*target\s+datalayout\s*=\s*"([^"]*)"', text, re.MULTILINE)
     if match and match[1] and match[1] != DATA_LAYOUT:
-        raise RuntimeError("incompatible LLVM data layout: POTADOS requires the MSP430 "
-                           "16-bit pointer/data layout; regenerate IR with "
-                           "Clang -target msp430-unknown-none (expected '" + DATA_LAYOUT + "')")
+        raise RuntimeError("incompatible private LLVM storage layout; regenerate IR with "
+                           "the POTADOS native-word frontend (expected '" + DATA_LAYOUT + "')")
+
+
+def check_word_profile(text: str) -> None:
+    """Keep LLVM octet storage assumptions out of native word operations."""
+    if not re.search(r'!"potados\.word-addressed"\s*,\s*i32\s+1\b', text):
+        raise RuntimeError("IR is missing the potados.word-addressed=1 ABI marker; "
+                           "ordinary host/MSP430 IR is not native-word POTADOS IR")
+    for raw_line in text.splitlines():
+        line = raw_line.split(";", 1)[0].strip()
+        if re.search(r'(?:^|=\s*)(?:load|store|getelementptr|ptrtoint|atomicrmw|cmpxchg)\b', line):
+            raise RuntimeError("native-word IR must use POTADOS word memory/address operations, "
+                               "not ordinary LLVM load/store/GEP/ptrtoint operations")
+        if re.search(r'@"?llvm\.mem(?:cpy|move|set)\.', line):
+            raise RuntimeError("LLVM memory intrinsics count octets; use POTADOS native cell memory operations")
+        if re.search(r'\b(?:global|constant|alloca)\b', line) and re.search(r'\bi(?:1|8)\b', line):
+            raise RuntimeError("native-word IR storage must use cells of at least 16 bits")
 
 
 def compile_source(source: Path, output: Path, *, optimization: str = "O2",
@@ -105,17 +133,11 @@ def compile_source(source: Path, output: Path, *, optimization: str = "O2",
         if major != 23:
             raise RuntimeError(f"{name} is LLVM {major}; the POTADOS module requires the pinned LLVM 23 tools")
     clang = tool("clang", llvm_build, clang or os.environ.get("CLANG")) if source.suffix.lower() == ".c" or runtime else None
-    if clang and tool_version(clang) > 23:
-        raise RuntimeError("the Clang frontend is newer than LLVM 23 and may emit incompatible IR")
     llvm_link = tool("llvm-link", llvm_build, os.environ.get("LLVM_LINK")) if runtime else None
     flags = extra_llc_flags or []
     output.parent.mkdir(parents=True, exist_ok=True)
-    frontend_flags = ["-target", "msp430-unknown-none", "-S", "-emit-llvm", "-" + optimization,
-                      "-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-fno-pic",
-                      "-Xclang", "-disable-llvm-passes", "-Xclang", "-disable-O0-optnone",
-                      "-I", str(ROOT / "runtime")]
     if source.suffix.lower() == ".c":
-        run([clang, *frontend_flags, "-o", str(frontend), str(source)], verbose)
+        compile_native_c(source, frontend, clang=clang, optimization=optimization)
         ir_source = frontend
     else:
         if source != frontend:
@@ -131,9 +153,11 @@ def compile_source(source: Path, output: Path, *, optimization: str = "O2",
             run([opt, "-S", "-mtriple=unknown-unknown-none", "-passes=verify",
                  str(ir_source), "-o", str(textual_input)], verbose)
         check_data_layout(textual_input.read_text(encoding="utf-8"))
+        check_word_profile(textual_input.read_text(encoding="utf-8"))
         if runtime:
             runtime_ir = work / "runtime.ll"
-            run([clang, *frontend_flags, "-o", str(runtime_ir), str(ROOT / "runtime/potados-runtime.c")], verbose)
+            compile_native_c(ROOT / "runtime/potados-runtime.c", runtime_ir,
+                             clang=clang, optimization=optimization)
             linked = work / "linked.ll"
             run([llvm_link, "-S", str(ir_source), str(runtime_ir), "-o", str(linked)], verbose)
             ir_source = linked
@@ -188,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
                        runtime=not args.no_runtime, output_format=output_format,
                        verbose=args.verbose, extra_llc_flags=args.llc_flag + shlex.split(os.environ.get("POTADOS_EXTRA_FLAGS", "")))
         return 0
-    except (OSError, RuntimeError, AssemblerError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+    except (OSError, RuntimeError, ValueError, AssemblerError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print(f"compilation failed: {error}", file=sys.stderr)
         return 1
 

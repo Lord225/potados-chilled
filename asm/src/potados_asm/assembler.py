@@ -686,6 +686,10 @@ SET_SECONDARY = {"SGE": 3, "SL": 2, "SE": 5, "SNE": 4, "SAE": 6, "SB": 7}
 JUMP_SECONDARY = {"JGE": 3, "JL": 2, "JE": 5, "JNE": 4, "JAE": 6, "JB": 7}
 FPU_SECONDARY = {"FADD": 1, "FSUB": 2, "FMUL": 3, "FDIV": 4}
 FPU_UNARY_SECONDARY = {"ITOF": 5, "FTOI": 6, "FTOU": 7}
+HALT_MESSAGES = {
+    "NO_MESSAGE": 0, "NONE": 0, "SHUT": 1, "PASS": 2,
+    "WAIT": 3, "ERROR": 4, "BREAK": 5, "ASSERT": 6,
+}
 
 
 def _encode_binary_register_instruction(
@@ -1145,8 +1149,15 @@ def encode_instruction(
     if mnemonic in FPU_SECONDARY or mnemonic in FPU_UNARY_SECONDARY:
         return _encode_fpu_instruction(instruction)
     if mnemonic == "HALT":
-        _require_operands(instruction, 0)
-        return [0xF000]
+        _require_operands(instruction, {0, 1})
+        if not instruction.operands:
+            return [0xF000]
+        message = instruction.operands[0]
+        if len(message.tokens) == 1 and message.tokens[0].text.upper() in HALT_MESSAGES:
+            code = HALT_MESSAGES[message.tokens[0].text.upper()]
+        else:
+            code = _unsigned(_value(message, symbols, address), 3, message.first(), "halt message")
+        return [0xF000 | code]
     raise AssemblerError(
         instruction.token.file,
         instruction.token.line,

@@ -28,6 +28,10 @@ def _registers(cpu: CPU) -> str:
     return " ".join(f"{name}={value:04X}" for name, value in zip(REGISTER_NAMES, cpu.registers))
 
 
+def _halt(cpu: CPU) -> str:
+    return f"HALT [{cpu.halt_message_name}]"
+
+
 def _location(cpu: CPU) -> str:
     labels = [name for name, address in cpu.symbols.items() if address == cpu.pc]
     suffix = f" ({', '.join(labels)})" if labels else ""
@@ -75,7 +79,7 @@ def debug(
                 print(
                     "step [N] | cycle [N]    clock N RTL cycles\n"
                     "continue | break ADDRESS/SYMBOL | delete [ADDRESS/SYMBOL]\n"
-                    "registers | set REGISTER VALUE | memory ADDRESS [COUNT]\n"
+                    "registers | set REGISTER VALUE | memory EVEN_BYTE_ADDRESS [WORDS]\n"
                     "write ADDRESS VALUE | disassemble [ADDRESS [COUNT]] | io\n"
                     "dump PATH | quit\n"
                     "Numbers use decimal or 0xHEX. Addresses are physical words.\n"
@@ -101,7 +105,7 @@ def debug(
                         before = cpu.cycles
                         cpu.tick(count)
                         print(f"Advanced {cpu.cycles - before} clock cycles.", file=stdout)
-                print("HALT" if cpu.halted else _location(cpu), file=stdout)
+                print(_halt(cpu) if cpu.halted else _location(cpu), file=stdout)
             elif command in {"c", "continue", "run"}:
                 if operands:
                     raise ValueError("continue takes no operands")
@@ -109,7 +113,7 @@ def debug(
                     max_cycles=max_cycles, breakpoints=breakpoints,
                     ignore_current_breakpoint=True,
                 )
-                print("HALT" if cpu.halted else f"Breakpoint: {_location(cpu)}", file=stdout)
+                print(_halt(cpu) if cpu.halted else f"Breakpoint: {_location(cpu)}", file=stdout)
             elif command in {"b", "break"}:
                 if operands:
                     if len(operands) != 1:
@@ -125,7 +129,8 @@ def debug(
                     breakpoints.clear()
             elif command in {"r", "regs", "registers"}:
                 print(_registers(cpu), file=stdout)
-                print(f"fetch PC={cpu.pc:04X} cycles={cpu.cycles} halted={cpu.halted}", file=stdout)
+                print(f"fetch PC={cpu.pc:04X} cycles={cpu.cycles} halted={cpu.halted} "
+                      f"halt_message={cpu.halt_message_name}", file=stdout)
             elif command == "set":
                 if len(operands) != 2:
                     raise ValueError("set expects REGISTER VALUE")
@@ -135,8 +140,8 @@ def debug(
                     raise ValueError("memory expects ADDRESS [COUNT]")
                 address = _address(cpu, operands[0])
                 count = _number(operands[1]) if len(operands) == 2 else 16
-                if not 1 <= count <= 65536:
-                    raise ValueError("count must be in 1..65536")
+                if not 1 <= count <= 32768:
+                    raise ValueError("count must be in 1..32768 native words")
                 for index in range(count):
                     current = (address + index) & 0xFFFF
                     print(f"{current:04X}: {cpu.read(current):04X}", file=stdout)
@@ -184,7 +189,7 @@ def _parser() -> argparse.ArgumentParser:
         sub.add_argument("--waves", nargs="?", const=True, default=False, type=Path, metavar="PATH",
                          help="record RTL waveforms; optionally copy the waveform to PATH")
         sub.add_argument("--dump-state", type=Path, help="dump real RTL registers, fetch PC, cycle count, and MMIO as JSON")
-        sub.add_argument("--dump-ram", type=Path, help="dump nonzero physical RTL RAM words as a sparse JSON map")
+        sub.add_argument("--dump-ram", type=Path, help="dump nonzero RTL RAM words keyed by native word address")
         if command == "run":
             sub.add_argument("--trace", metavar="PATH", help="real clock-cycle trace as JSONL; '-' writes to stdout")
     return parser
@@ -225,7 +230,7 @@ def run(argv: list[str] | None = None) -> int:
                     stream = sys.stdout if args.trace == "-" else stack.enter_context(open(args.trace, "w", encoding="utf-8"))
                 trace = (lambda event: print(json.dumps(event.to_dict()), file=stream)) if stream else None
                 cpu.run(max_cycles=args.max_cycles, trace=trace)
-            print(f"HALT after {cpu.cycles} clock cycles; {_registers(cpu)}",
+            print(f"{_halt(cpu)} after {cpu.cycles} clock cycles; {_registers(cpu)}",
                   file=sys.stderr if args.trace == "-" else sys.stdout)
     except (AssemblerError, EmulatorError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

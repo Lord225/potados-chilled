@@ -87,6 +87,18 @@ typedef enum logic[3:0] {
     OP_HALT
 } op_primary_t;
 
+// HALT keeps its primary opcode (1111). Bits [2:0] carry a diagnostic
+// message; bits [11:3] are reserved. All messages stop the CPU alike.
+typedef enum logic [2:0] {
+    HALT_MESSAGE_NONE   = 3'b000,
+    HALT_MESSAGE_SHUT   = 3'b001,
+    HALT_MESSAGE_PASS   = 3'b010,
+    HALT_MESSAGE_WAIT   = 3'b011,
+    HALT_MESSAGE_ERROR  = 3'b100,
+    HALT_MESSAGE_BREAK  = 3'b101,
+    HALT_MESSAGE_ASSERT = 3'b110
+} halt_message_t;
+
 
 typedef struct packed {
     op_primary_t op_primary;
@@ -215,7 +227,8 @@ typedef struct packed {
     // Selects the value eventually written to dst, if any.
     writeback_source_t writeback_source;
 
-    // Stops architectural execution after this instruction.
+    // Stops architectural execution after this instruction. For HALT,
+    // operand_b_value[2:0] carries the halt_message_t diagnostic code.
     logic halt;
 } execute_stage_t;
 

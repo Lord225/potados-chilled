@@ -43,6 +43,7 @@ class Simulation:
             "pc": int(d.fetch_pc.value) if int(d.fetch_valid.value) or int(d.done.value) else int(d.next_fetch_pc.value),
             "cycles": self.cycles, "steps": self.cycles,
             "instructions": self.instructions, "halted": bool(int(d.done.value)),
+            "halt_message": int(d.halt_message.value),
             "io": self.io, "io_writes": self.io_writes,
             "fetch_valid": bool(int(d.fetch_valid.value)),
             "instruction_accepted": bool(int(d.instruction_accepted.value)),
@@ -71,8 +72,9 @@ class Simulation:
             self.rom[int(address)].value = int(word)
         # Deterministic testbench initialization writes the real HDL memory.
         # It is not a substitute data-memory model used during execution.
-        for address in (range(self.low, self.high + 1) if not self._cleared else self.written):
-            self.ram[address].value = 0
+        indices = range(self.low, self.high + 1) if not self._cleared else self.written
+        for index in indices:
+            self.ram[index].value = 0
         self._cleared = True
         self.written.clear()
         await Timer(1, unit="ns")
@@ -137,6 +139,7 @@ class Simulation:
                 "memory_reads": [{"address": address, "value": int(d.memory_read_data.value), "io": is_io}] if load else [],
                 "memory_writes": [{"address": address, "value": data, "io": is_io}] if store else [],
                 "halted": bool(int(d.done.value)),
+                "halt_message": int(d.halt_message.value),
                 "pipeline": {"execute": int(d.execute_packet.value), "memory": int(d.memory_packet.value), "writeback": int(d.writeback_packet.value)}}
 
     async def command(self, request: dict[str, Any]) -> dict[str, Any]:

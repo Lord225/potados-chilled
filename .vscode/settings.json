@@ -42,6 +42,7 @@
   "basedpyright.analysis.extraPaths": [
     "./tb",
     "./asm/src",
-    "./llvm/potados-emulator/src"
+    "./llvm/potados-emulator/src",
+    "./llvm/potados-frontend/src"
   ]
 }

@@ -18,9 +18,9 @@
 #include <algorithm>
 using namespace llvm;
 #define DEBUG_TYPE "potados-asm-printer"
-static cl::opt<unsigned>
-    InitialSP("potados-initial-sp", cl::init(0x7f00),
-              cl::desc("Initial architectural word stack pointer"));
+static cl::opt<unsigned> InitialSP(
+    "potados-initial-sp", cl::init(0x7f00),
+    cl::desc("Initial native word address of the architectural stack"));
 static cl::opt<std::string> Entry("potados-entry", cl::init("main"),
                                   cl::desc("Startup entry function"));
 static cl::opt<bool>
@@ -82,24 +82,24 @@ class PotadosAsmPrinter final : public AsmPrinter {
   void adjustSP(int64_t Bytes) {
     if (Bytes & 1)
       report_fatal_error("POTADOS stack adjustment must be even");
-    int64_t Words = Bytes / 2;
-    if (!Words)
+    Bytes /= 2;
+    if (!Bytes)
       return;
-    if (Words >= -128 && Words <= 127)
-      inst("ADDI SP, " + Twine(Words));
+    if (Bytes >= -128 && Bytes <= 127)
+      inst("ADDI SP, " + Twine(Bytes));
     else {
-      inst("LI R6, " + Twine(Words));
+      inst("LI R6, " + Twine(Bytes));
       inst("ADD SP, SP, R6");
     }
   }
   void stackAccess(bool Load, StringRef V, int64_t Bytes) {
     if (Bytes & 1)
       report_fatal_error("unaligned POTADOS word stack slot");
-    int64_t W = Bytes / 2;
-    if (W >= -128 && W <= 127)
-      inst(Twine(Load ? "LDSP " : "STSP ") + V + ", " + Twine(W));
+    Bytes /= 2;
+    if (Bytes >= -128 && Bytes <= 127)
+      inst(Twine(Load ? "LDSP " : "STSP ") + V + ", " + Twine(Bytes));
     else {
-      inst("LI R6, " + Twine(W));
+      inst("LI R6, " + Twine(Bytes));
       inst("ADD R6, SP, R6");
       inst(Twine(Load ? "LD " : "ST ") + V + ", [R6]");
     }
@@ -162,49 +162,27 @@ class PotadosAsmPrinter final : public AsmPrinter {
     }
     return (Branch ? "J" : "S") + S.str();
   }
-  void loadByte(StringRef D, StringRef Ptr, bool Signed) {
-    saveLink();
-    inst("LI R7, 1");
-    inst("AND R7, " + Ptr + ", R7");
-    shift("R7", -3);
-    mov("R6", Ptr);
-    shift("R6", 1);
-    inst("LD " + D + ", [R6]");
-    inst("SH " + D + ", R7, 0");
-    inst("LLI R6, 255");
-    inst("AND " + D + ", " + D + ", R6");
-    if (Signed) {
-      shift(D, -8);
-      shift(D, 8, true);
+  std::optional<std::string> addressExpression(const Constant *C) const {
+    if (const auto *I = dyn_cast<ConstantInt>(C))
+      return std::to_string(I->getSExtValue());
+    if (const auto *G = dyn_cast<GlobalValue>(C)) {
+      auto I = Addresses.find(G);
+      return I == Addresses.end() ? name(G->getName())
+                                  : std::to_string(I->second);
     }
-    restoreLink();
-  }
-  void storeByte(StringRef V, StringRef Ptr) {
-    saveLink();
-    mov("R6", Ptr);
-    shift("R6", 1);
-    inst("LD R7, [R6]");
-    inst("LLI R6, 1");
-    inst("AND R6, " + Ptr + ", R6");
-    auto Low = label("byte_low"), Done = label("byte_done");
-    inst("JE R6, ZERO, " + Low);
-    inst("LLI R6, 255");
-    inst("AND R7, R7, R6");
-    mov("R6", V);
-    shift("R6", -8);
-    inst("OR R7, R7, R6");
-    inst("JMP " + Done);
-    text(Low + ":");
-    inst("LUI R6, 255");
-    inst("AND R7, R7, R6");
-    inst("LLI R6, 255");
-    inst("AND R6, " + V + ", R6");
-    inst("OR R7, R7, R6");
-    text(Done + ":");
-    mov("R6", Ptr);
-    shift("R6", 1);
-    inst("ST R7, [R6]");
-    restoreLink();
+    if (const auto *E = dyn_cast<ConstantExpr>(C)) {
+      if (E->isCast())
+        return addressExpression(cast<Constant>(E->getOperand(0)));
+      if (E->getOpcode() == Instruction::Add ||
+          E->getOpcode() == Instruction::Sub) {
+        auto A = addressExpression(cast<Constant>(E->getOperand(0)));
+        auto B = addressExpression(cast<Constant>(E->getOperand(1)));
+        if (A && B)
+          return "(" + *A + (E->getOpcode() == Instruction::Add ? "+" : "-") +
+                 *B + ")";
+      }
+    }
+    return std::nullopt;
   }
   bool encode(const Constant *C, const DataLayout &DL,
               MutableArrayRef<uint8_t> Bytes, uint64_t ByteOffset = 0) {
@@ -231,6 +209,15 @@ class PotadosAsmPrinter final : public AsmPrinter {
       return true;
     }
     if (auto *CE = dyn_cast<ConstantExpr>(C)) {
+      if (CE->getOpcode() == Instruction::Add ||
+          CE->getOpcode() == Instruction::Sub) {
+        auto E = addressExpression(CE);
+        if (!E || Bytes.size() != 2)
+          return false;
+        SymbolBytes[ByteOffset] = "%lo(" + *E + ")";
+        SymbolBytes[ByteOffset + 1] = "%hi(" + *E + ")";
+        return true;
+      }
       if (CE->isCast())
         return encode(cast<Constant>(CE->getOperand(0)), DL, Bytes, ByteOffset);
       if (auto *GEP = dyn_cast<GEPOperator>(CE)) {
@@ -239,8 +226,10 @@ class PotadosAsmPrinter final : public AsmPrinter {
             !encode(cast<Constant>(GEP->getPointerOperand()), DL, Bytes,
                     ByteOffset))
           return false;
+        if (Offset.getZExtValue() & 1)
+          return false;
         uint16_t V = uint16_t(Bytes[0] | uint16_t(Bytes[1]) << 8) +
-                     Offset.getZExtValue();
+                     Offset.getZExtValue() / 2;
         Bytes[0] = V;
         Bytes[1] = V >> 8;
         return true;
@@ -280,7 +269,13 @@ public:
     return "POTADOS flat assembly printer";
   }
   void emitStartOfAsmFile(Module &M) override {
-    uint64_t Address = 0x200;
+    const auto *WordABI = mdconst::dyn_extract_or_null<ConstantInt>(
+        M.getModuleFlag("potados.word-addressed"));
+    if (!WordABI || !WordABI->equalsInt(1))
+      report_fatal_error(
+          "POTADOS requires native word ABI IR from its C frontend "
+          "(module flag potados.word-addressed = 1)");
+    uint64_t Address = 0x100;
     for (auto &F : M) {
       if (!F.isDeclaration()) {
         F.addFnAttr(Attribute::NoUnwind);
@@ -292,17 +287,23 @@ public:
         continue;
       if (G.isThreadLocal())
         report_fatal_error("POTADOS does not support TLS");
-      Address = alignTo(Address, std::max(Align(2), G.getAlign().valueOrOne()));
+      uint64_t Size = M.getDataLayout().getTypeAllocSize(G.getValueType());
+      if (Size & 1)
+        report_fatal_error(
+            "POTADOS global storage must contain complete 16-bit cells");
+      uint64_t Alignment =
+          std::max<uint64_t>(1, G.getAlign().valueOrOne().value() / 2);
+      Address = alignTo(Address, Alignment);
       Addresses[&G] = Address;
-      Address += M.getDataLayout().getTypeAllocSize(G.getValueType());
-      if (Address >= 0xe000)
+      Address += Size / 2;
+      if (Address >= 0x7000)
         report_fatal_error("POTADOS globals exceed the reserved data range");
       text(".equ " + name(G.getName()) + ", " + Twine(Addresses[&G]));
     }
     if (!NoStartup && M.getFunction(Entry) &&
         !M.getFunction(Entry)->isDeclaration()) {
       if (InitialSP > 0x7fff)
-        report_fatal_error("POTADOS initial SP must be in RAM");
+        report_fatal_error("POTADOS initial SP must be a RAM word address");
       text(".org 0");
       text("_start:");
       inst("LI SP, " + Twine(InitialSP));
@@ -355,7 +356,7 @@ public:
           inst("OR R5, R5, R6");
         } else
           inst("LI R5, " + Twine(V));
-        inst("LI R6, " + Twine((Addresses[&G] + I) / 2));
+        inst("LI R6, " + Twine(Addresses[&G] + I / 2));
         inst("ST R5, [R6]");
       }
     }
@@ -425,26 +426,31 @@ public:
       return;
     case Potados::LD16:
     case Potados::ST16:
+      inst(Twine(Op == Potados::LD16 ? "LD " : "ST ") + O(0) + ", [" + O(1) +
+           "]");
+      return;
+    case Potados::LDprivate:
+    case Potados::STprivate:
+      // LLVM's private legalization tables retain octet-based offsets. Their
+      // backing storage is in RAM; only the final bus transaction counts cells.
       mov("R6", O(1));
       shift("R6", 1);
-      inst(Twine(Op == Potados::LD16 ? "LD " : "ST ") + O(0) + ", [R6]");
-      return;
-    case Potados::LD8Z:
-    case Potados::LD8S:
-      loadByte(O(0), O(1), Op == Potados::LD8S);
-      return;
-    case Potados::ST8:
-      storeByte(O(0), O(1));
+      inst(Twine(Op == Potados::LDprivate ? "LD " : "ST ") + O(0) + ", [R6]");
       return;
     case Potados::LDsp:
     case Potados::STsp:
       stackAccess(Op == Potados::LDsp, O(0), MI->getOperand(1).getImm());
       return;
     case Potados::LEAsp:
+    case Potados::LEAspPrivate:
       mov(O(0), "SP");
-      shift(O(0), -1);
+      if (Op == Potados::LEAspPrivate)
+        shift(O(0), -1);
       if (MI->getOperand(1).getImm()) {
-        inst("LI R6, " + O(1));
+        if (MI->getOperand(1).getImm() & 1)
+          report_fatal_error("unaligned POTADOS backing object");
+        inst("LI R6, " + Twine(MI->getOperand(1).getImm() /
+                               (Op == Potados::LEAspPrivate ? 1 : 2)));
         inst("ADD " + O(0) + ", " + O(0) + ", R6");
       }
       return;

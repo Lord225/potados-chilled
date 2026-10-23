@@ -16,6 +16,10 @@ from potados_asm import AssemblyResult, assemble, assemble_file
 
 MASK = 0xFFFF
 REGISTER_NAMES = ("ZERO", "SP", "R2", "R3", "R4", "R5", "R6", "R7")
+HALT_MESSAGES = {
+    0: "No Message", 1: "SHUT", 2: "PASS", 3: "WAIT",
+    4: "ERROR", 5: "BREAK", 6: "ASSERT",
+}
 
 
 class EmulatorError(RuntimeError):
@@ -67,7 +71,9 @@ class Instruction:
     def __str__(self) -> str:
         r = REGISTER_NAMES
         m = self.mnemonic
-        if m in {"NOP", "HALT"}:
+        if m == "HALT":
+            return "HALT" if self.immediate == 0 else f"HALT {HALT_MESSAGES.get(self.immediate, str(self.immediate))}"
+        if m == "NOP":
             return m
         if m in {"ADD", "SUB", "AND", "OR", "XOR", "MUL", "SGE", "SL", "SE", "SNE", "SAE", "SB", "FADD", "FSUB", "FMUL", "FDIV"}:
             return f"{m} {r[self.dst]}, {r[self.src_a]}, {r[self.src_b]}"
@@ -138,6 +144,7 @@ def decode(program: Mapping[int, int], address: int = 0) -> Instruction:
         mnemonic = {1: "FADD", 2: "FSUB", 3: "FMUL", 4: "FDIV", 5: "ITOF", 6: "FTOI", 7: "FTOU"}.get(function)
     elif primary == 15:
         mnemonic = "HALT"
+        immediate = word & 7
     if mnemonic is None:
         raise IllegalInstructionError(f"undefined instruction 0x{word:04X} at PC=0x{address:04X}")
     return Instruction(address, words, mnemonic, dst, a, b, immediate, function)
@@ -166,6 +173,7 @@ class TraceCycle:
     memory_reads: tuple[MemoryAccess, ...] = ()
     memory_writes: tuple[MemoryAccess, ...] = ()
     halted: bool = False
+    halt_message: int = 0
     fetch_valid: bool = False
     fetch_accepted: bool = False
     fetch_low: int = 0
@@ -200,6 +208,7 @@ class TraceCycle:
             memory_reads=tuple(MemoryAccess(**item) for item in event.get("memory_reads", ())),
             memory_writes=tuple(MemoryAccess(**item) for item in event.get("memory_writes", ())),
             halted=bool(event.get("halted", False)),
+            halt_message=int(event.get("halt_message", 0)),
             fetch_valid=bool(event.get("fetch_valid", False)),
             fetch_accepted=bool(event.get(
                 "fetch_accepted", event.get("accepted", event.get("instruction_accepted", False))
@@ -229,6 +238,8 @@ class CPU:
 
     ``program`` is loaded into the wrapper's real ROM. Registers, RAM, MMIO,
     forwarding, stalls, branches, and HALT are all implemented by ``potados.sv``.
+    Data addresses name native 16-bit words; consecutive words use consecutive addresses.
+    Program ROM addresses and the fetch PC continue to count instruction words.
     Use this class as a context manager to close the simulator promptly.
     """
 
@@ -353,6 +364,15 @@ class CPU:
         return bool(self._state.get("halted", False))
 
     @property
+    def halt_message(self) -> int:
+        """HALT reason latched by the core's real three-bit output."""
+        return int(self._state.get("halt_message", 0))
+
+    @property
+    def halt_message_name(self) -> str:
+        return HALT_MESSAGES.get(self.halt_message, f"Reserved ({self.halt_message})")
+
+    @property
     def io(self) -> dict[int, int]:
         return {_integer_key(key): int(value) for key, value in self._state.get("io", {}).items()}
 
@@ -362,6 +382,7 @@ class CPU:
 
     @property
     def ram(self) -> tuple[int, ...]:
+        """Real 16-bit RAM words indexed by native word addresses."""
         if self._ram is None:
             if "ram" not in self._state:
                 self._rpc({"op": "snapshot", "include_ram": True})
@@ -461,6 +482,7 @@ class CPU:
         """Return a debugger snapshot of state obtained from the RTL instance."""
         result: dict[str, Any] = {
             "backend": "cocotb-verilator", "pc": self.pc, "halted": self.halted,
+            "halt_message": self.halt_message, "halt_message_name": self.halt_message_name,
             "cycles": self.cycles, "steps": self.cycles,
             "accepted_fetches": self.accepted_fetches,
             "fetch_valid": bool(self._state.get("fetch_valid", False)),

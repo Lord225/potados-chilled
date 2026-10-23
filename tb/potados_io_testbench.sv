@@ -66,6 +66,7 @@ module potados_io_testbench (
         .reset(reset),
         .registers_out(registers_out),
         .potados_done(potados_done),
+        .halt_message(),
         .pc_out(),
         .io_address(io_address),
         .io_read_enable(io_read_enable),

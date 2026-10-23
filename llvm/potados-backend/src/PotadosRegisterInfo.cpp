@@ -48,6 +48,9 @@ bool PotadosRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   case Potados::LEAfi:
     Opcode = Potados::LEAsp;
     break;
+  case Potados::LEAfiPrivate:
+    Opcode = Potados::LEAspPrivate;
+    break;
   default:
     report_fatal_error("unexpected POTADOS frame-index instruction");
   }

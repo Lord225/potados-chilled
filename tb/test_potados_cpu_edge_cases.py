@@ -214,6 +214,57 @@ async def immediate_boundaries_survive_the_full_pipeline(dut: Dut) -> None:
     assert ram(dut, 0x129E) == 0xFF80
 
 
+@cocotb.test()
+async def halt_message_is_latched_sticky_and_resettable(dut: Dut) -> None:
+    dut.clk.value = 0
+    dut.io_read_data.value = 0
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    rom = dut.program_memory_inst.rom_inst.memory
+    for message in (1, 2, 3, 4, 5, 6, 0):
+        dut.reset.value = 1
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        assert int(dut.halt_message.value) == 0
+        assert not int(dut.potados_done.value)
+        # Independent literal encodings: LLI R2,42; HALT MSG; HALT ERROR.
+        rom[0].value = 0x5542
+        rom[1].value = 0xF000 | message
+        rom[2].value = 0xF004
+        dut.reset.value = 0
+        await _run_until_halt(dut)
+        assert register(int(dut.registers_out.value), 2) == 42
+        assert int(dut.halt_message.value) == message
+        for _ in range(4):
+            await RisingEdge(dut.clk)
+            await Timer(1, unit="ns")
+            assert int(dut.potados_done.value)
+            assert int(dut.halt_message.value) == message
+
+
+@cocotb.test()
+async def skipped_halt_does_not_publish_its_message(dut: Dut) -> None:
+    dut.clk.value = 0
+    dut.reset.value = 1
+    dut.io_read_data.value = 0
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    # JMP target; HALT ERROR; target: HALT PASS.
+    rom = dut.program_memory_inst.rom_inst.memory
+    for address, word in enumerate((0xB040, 3, 0xF004, 0xF002)):
+        rom[address].value = word
+    await RisingEdge(dut.clk)
+    await Timer(1, unit="ns")
+    dut.reset.value = 0
+    for _ in range(32):
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        assert int(dut.halt_message.value) != 4
+        if int(dut.potados_done.value):
+            break
+    else:
+        raise AssertionError("CPU did not reach the target HALT PASS")
+    assert int(dut.halt_message.value) == 2
+
+
 def _runner() -> Runner:
     runner = get_runner(os.getenv("SIM", "verilator"))
     shutil.rmtree(SIM_BUILD, ignore_errors=True)
@@ -335,3 +386,11 @@ def test_shifts_use_both_forwarded_registers_and_signed_immediates(
 
 def test_immediate_boundaries_survive_the_full_pipeline(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "immediate_boundaries_survive_the_full_pipeline")
+
+
+def test_halt_message_is_latched_sticky_and_resettable(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "halt_message_is_latched_sticky_and_resettable")
+
+
+def test_skipped_halt_does_not_publish_its_message(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "skipped_halt_does_not_publish_its_message")

@@ -59,14 +59,18 @@ def _build(ram_low: int, ram_high: int, waves: bool) -> Path:
         raise RTLError("Verilator is required for execution; install it and add verilator to PATH")
     rtl = _rtl_source()
     wrapper = _wrapper_source()
-    version = subprocess.run([executable, "--version"], text=True, capture_output=True, check=True).stdout
+    try:
+        version = subprocess.run([executable, "--version"], text=True, capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RTLError(f"cannot execute Verilator: {exc}") from exc
     identity = hashlib.sha256()
     identity.update(json.dumps([str(rtl), version, cocotb.__version__, sys.version,
                                 sys.executable, ram_low, ram_high, waves]).encode())
     for source in [*sorted(rtl.glob("*.sv")), wrapper]:
         identity.update(source.name.encode())
         identity.update(source.read_bytes())
-    directory = Path(os.environ.get("POTADOS_SIM_BUILD", rtl.parent / "build/sim/potados_emulator")) / identity.hexdigest()[:20]
+    build_root = Path(os.environ.get("POTADOS_SIM_BUILD", rtl.parent / "build/sim/potados_emulator")).expanduser().resolve()
+    directory = build_root / identity.hexdigest()[:20]
     directory.mkdir(parents=True, exist_ok=True)
     # Concurrent compiler tests share a simulator build, never a live instance.
     import fcntl

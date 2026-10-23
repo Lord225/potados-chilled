@@ -29,6 +29,7 @@ module top #(
     ) potados_inst (
         .clk(clk),
         .reset(!btn1),
+        .halt_message(),
         .io_address(io_address),
         .io_read_enable(io_read_enable),
         .io_write_enable(io_write_enable),

@@ -89,6 +89,11 @@ SH   R2, ZERO, -1     ; R2 <<= 1
 ASH  R2, R3, 2        ; R2 >>= signed(R3 + 2), preserving the sign
 ```
 
+`HALT` accepts an optional diagnostic message: `HALT NO_MESSAGE`, `HALT SHUT`,
+`HALT PASS`, `HALT WAIT`, `HALT ERROR`, `HALT BREAK`, or `HALT ASSERT`.
+Plain `HALT` selects No Message. Numeric codes `0..7` are also accepted;
+code 7 is reserved. See the [HALT message table](../potados_spec.md#halt-messages).
+
 Convenience pseudo-instructions keep common code compact. They expand into
 ordinary POTADOS ISA instructions, so no RTL support is required:
 

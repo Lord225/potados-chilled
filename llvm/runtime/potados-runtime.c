@@ -1,4 +1,6 @@
 /* Freestanding integer and memory support for the POTADOS Chilled ABI.
+ * Memory helper counts use C bytes: one native 16-bit cell each. In particular
+ * memset preserves all 16 bits of its unsigned-char conversion.
  * No arithmetic helper uses division, remainder, or wide multiplication.
  * Division by zero is undefined at the language level; these helpers return
  * an all-ones quotient and leave the dividend as the remainder.

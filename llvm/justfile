@@ -34,7 +34,7 @@ emulator program cycles="1000000":
 emulator-cui program:
     "{{ PYTHON }}" "{{ ROOT }}/scripts/run.py" debug "{{ program }}"
 
-# Compile, assemble, run, and check every maintained example at five levels.
+# Compile, assemble, run, and check all nine examples at six levels (54 RTL runs).
 verify-programs:
     "{{ PYTHON }}" "{{ ROOT }}/scripts/verify.py"
 

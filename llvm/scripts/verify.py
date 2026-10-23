@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         parser.error("unknown examples: " + ", ".join(sorted(unknown)))
     failures = 0
-    for level in args.opt or ["O0", "O1", "O2", "O3", "Os"]:
+    for level in args.opt or ["O0", "O1", "O2", "O3", "Os", "Oz"]:
         for name in programs:
             try:
                 output = ROOT / "examples/build" / level / f"{name}.asm"
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
                     want = expected[name]["r2"]
                     if actual != want:
                         raise RuntimeError(f"R2 = {actual} (0x{actual:04X}); expected {want} (0x{want:04X})")
-                    if name == "mmio" and (cpu.io.get(0x8000) != 42 or cpu.io.get(0x8001) != 255):
+                    if name == "mmio" and (cpu.io.get(0x8000) != 42 or cpu.io.get(0x8001) != 99):
                         raise RuntimeError("MMIO register contents did not match")
                     print(f"PASS {level} {name}: R2={actual}; {cpu.cycles} RTL clock cycles", flush=True)
             except Exception as error:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 from contextlib import contextmanager
 import json
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -96,6 +98,18 @@ def test_memory_displacements_and_separate_program_ram() -> None:
         assert cpu.registers[4:8] == [0xBEEF] * 4
         assert [cpu.ram[address] for address in (0x20, 0x5F, 0x80, 0x17F)] == [0xBEEF] * 4
         assert cpu.rom[0] != cpu.ram[0]
+
+
+def test_native_word_offsets_select_neighboring_ram_words() -> None:
+    source = "LI R2, 0x20\nLLI R3, 42\nLLI R4, 99\nST R3, [R2]\nST R4, [R2 + 1]\nLD R5, [R2]\nLD R6, [R2 + 1]\nHALT"
+    with execute(source) as cpu:
+        assert cpu.registers[5:7] == [42, 99]
+        assert cpu.ram[0x20:0x22] == (42, 99)
+        assert cpu.read(0x20) == 42 and cpu.read(0x21) == 99
+        cpu.write(0x21, 0xABCD)
+        assert cpu.read(0x21) == 0xABCD
+        cpu.set_io(0x8001, 0x1234)
+        assert cpu.io[0x8001] == 0x1234
 
 
 def test_push_pop_and_explicit_sp_destination_priority() -> None:
@@ -305,9 +319,56 @@ def test_rtl_process_failure_reports_error_and_still_cleans_up() -> None:
     with CPU.from_source("loop: JMP loop") as cpu:
         process = cpu._session._process
         assert process is not None and process.poll() is None
-        process.terminate()
+        # The worker and native Verilator executable share a private group.
+        os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=5)
         with pytest.raises(EmulatorError, match=r"(?i)(RTL|simulat|closed|exit)"):
             cpu.step()
     assert process.poll() is not None
     assert cpu._session is None
+
+
+@pytest.mark.parametrize(("message", "code", "display"), [
+    ("NO_MESSAGE", 0, "No Message"),
+    ("SHUT", 1, "SHUT"),
+    ("PASS", 2, "PASS"),
+    ("WAIT", 3, "WAIT"),
+    ("ERROR", 4, "ERROR"),
+    ("BREAK", 5, "BREAK"),
+    ("ASSERT", 6, "ASSERT"),
+])
+def test_halt_message_is_latched_by_the_real_rtl(message: str, code: int, display: str) -> None:
+    source = f"LLI R2, 42\nHALT {message}\nLLI R2, 99\nHALT ERROR"
+    with CPU.from_source(source) as cpu:
+        assert not cpu.halted
+        assert cpu.halt_message == 0, "The hardware reset must clear the message output"
+        events = []
+        cpu.run(max_cycles=1000, trace=events.append)
+        assert cpu.halted
+        assert cpu.registers[2] == 42
+        assert cpu.halt_message == code
+        assert cpu.halt_message_name == display
+        assert cpu.state()["halt_message"] == code
+        assert cpu.state()["halt_message_name"] == display
+        assert events[-1].halt_message == code
+        stopped_cycles = cpu.cycles
+        cpu.run(max_cycles=10)
+        assert cpu.cycles == stopped_cycles
+        assert cpu.halt_message == code
+
+
+@pytest.mark.parametrize(("message", "code"), [("PASS", 2), ("ERROR", 4)])
+def test_cli_reports_hardware_halt_reason_without_changing_host_exit_status(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], message: str, code: int,
+) -> None:
+    program = tmp_path / "halt.asm"
+    state = tmp_path / "halt-state.json"
+    program.write_text(f"LLI R2, 42\nHALT {message}\n")
+    assert run(["run", str(program), "--dump-state", str(state)]) == 0
+    output = capsys.readouterr()
+    assert f"HALT [{message}]" in output.out
+    dumped = json.loads(state.read_text())
+    assert dumped["backend"] == "cocotb-verilator"
+    assert dumped["halt_message"] == code
+    assert dumped["halt_message_name"] == message
+    assert dumped["registers"]["R2"] == 42

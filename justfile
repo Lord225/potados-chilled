@@ -32,12 +32,12 @@ llvm-build:
 
 # Compile a maintained C example.
 llvm-example name="sample" opt="-O2":
-    python3 llvm/scripts/compile.py "llvm/examples/src/{{ name }}.c" -o "llvm/examples/build/{{ name }}.asm" "{{ opt }}"
+    uv run --project llvm python llvm/scripts/compile.py "llvm/examples/src/{{ name }}.c" -o "llvm/examples/build/{{ name }}.asm" "{{ opt }}"
 
 # Execute a generated image on the CPU RTL using cocotb and Verilator.
 llvm-run program cycles="1000000":
-    .venv/bin/python llvm/scripts/run.py run "{{ program }}" --max-cycles "{{ cycles }}"
+    uv run --project llvm python llvm/scripts/run.py run "{{ program }}" --max-cycles "{{ cycles }}"
 
 # Require a built compiler and run the RTL simulator and compiler integration checks.
 llvm-test:
-    POTADOS_REQUIRE_BACKEND=1 .venv/bin/python -m pytest -q llvm/tests
+    POTADOS_REQUIRE_BACKEND=1 uv run --project llvm python -m pytest -q llvm/tests

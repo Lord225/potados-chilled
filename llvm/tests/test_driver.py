@@ -19,7 +19,8 @@ assert spec and spec.loader
 driver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(driver)
 
-IR = "define i16 @main() { ret i16 42 }\n"
+ABI_MARKER = '!llvm.module.flags = !{!0}\n!0 = !{i32 1, !"potados.word-addressed", i32 1}\n'
+IR = "define i16 @main() { ret i16 42 }\n" + ABI_MARKER
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def fake_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any
     binary.mkdir()
     log = tmp_path / "calls.jsonl"
     config = tmp_path / "versions.json"
-    config.write_text(json.dumps({"opt": 23, "llc": 23, "clang": 21, "llvm-link": 23}))
+    config.write_text(json.dumps({"opt": 23, "llc": 23, "clang": 21, "llvm-link": 23, "decoded_ir": IR}))
     program = "#!" + sys.executable + "\n" + r'''
 import json
 from pathlib import Path
@@ -63,7 +64,14 @@ else:
     module.write_bytes(b"fake test module")
     source = tmp_path / "input.c"
     source.write_text("unsigned short main(void) { return 42; }\n")
-    return {"bin": binary, "log": log, "config": config, "module": module,
+    frontend_calls = []
+    def native_frontend(source, output, *, clang, optimization):
+        frontend_calls.append((source, output, clang, optimization))
+        function = "runtime_helper" if source.name == "potados-runtime.c" else "main"
+        output.write_text("define i16 @" + function + "() { ret i16 42 }\n" + ABI_MARKER)
+        return output
+    monkeypatch.setattr(driver, "compile_native_c", native_frontend)
+    return {"frontend_calls": frontend_calls, "bin": binary, "log": log, "config": config, "module": module,
             "source": source, "out": tmp_path / "output/program.asm"}
 
 
@@ -78,11 +86,12 @@ def calls(files: dict[str, Any]) -> list[tuple[str, list[str]]]:
 def test_frontend_contract_and_runtime_linking(fake_tools: dict[str, Any]) -> None:
     output = compile_fake(fake_tools)
     invocations = calls(fake_tools)
-    frontend = [args for name, args in invocations if name == "clang"]
+    frontend = fake_tools["frontend_calls"]
     assert len(frontend) == 2
-    for args in frontend:
-        assert args[args.index("-target") + 1] == "msp430-unknown-none"
-        assert {"-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-fno-pic", "-disable-llvm-passes", "-disable-O0-optnone"} <= set(args)
+    assert frontend[0][0] == fake_tools["source"]
+    assert frontend[1][0] == ROOT / "runtime/potados-runtime.c"
+    assert all(call[3] == "O2" for call in frontend)
+    assert all(name != "clang" for name, _ in invocations)
     assert any(name == "llvm-link" for name, _ in invocations)
     assert "potados_mmio_write:" in output.read_text()
     assert output.with_suffix(".frontend.ll").is_file()
@@ -110,13 +119,12 @@ def test_missing_tool_has_an_actionable_error(fake_tools: dict[str, Any], monkey
     assert not fake_tools["out"].parent.exists()
 
 
-def test_newer_frontend_is_rejected_before_generating_ir(fake_tools: dict[str, Any]) -> None:
+def test_preprocessor_version_does_not_determine_ir_compatibility(fake_tools: dict[str, Any]) -> None:
     versions = json.loads(fake_tools["config"].read_text())
     versions["clang"] = 25
     fake_tools["config"].write_text(json.dumps(versions))
-    with pytest.raises(RuntimeError, match="frontend is newer than LLVM 23"):
-        compile_fake(fake_tools, runtime=False)
-    assert not fake_tools["log"].exists()
+    compile_fake(fake_tools, runtime=False)
+    assert len(fake_tools["frontend_calls"]) == 1
 
 
 @pytest.mark.parametrize(("suffix", "contents"), [(".ll", IR.encode()), (".bc", b"BC\xC0\xDEtest bitcode")])
@@ -134,7 +142,7 @@ def test_ir_and_bitcode_inputs_are_retained_without_running_a_frontend(fake_tool
 
 def test_missing_entry_is_diagnosed_before_code_generation(fake_tools: dict[str, Any]) -> None:
     fake_tools["source"] = fake_tools["source"].with_suffix(".ll")
-    fake_tools["source"].write_text("define i16 @helper() { ret i16 42 }\n")
+    fake_tools["source"].write_text("define i16 @helper() { ret i16 42 }\n" + ABI_MARKER)
     with pytest.raises(RuntimeError, match="no definition of entry function 'main'"):
         compile_fake(fake_tools, runtime=False)
     assert all(name != "llc" for name, _ in calls(fake_tools))
@@ -144,7 +152,7 @@ def test_missing_entry_is_diagnosed_before_code_generation(fake_tools: dict[str,
 @pytest.mark.parametrize("flags", [["-potados-entry=start"], ["-potados-no-startup"]])
 def test_custom_entry_and_library_modules_are_allowed(fake_tools: dict[str, Any], flags: list[str]) -> None:
     fake_tools["source"] = fake_tools["source"].with_suffix(".ll")
-    fake_tools["source"].write_text("define i16 @start() { ret i16 42 }\n")
+    fake_tools["source"].write_text("define i16 @start() { ret i16 42 }\n" + ABI_MARKER)
     compile_fake(fake_tools, runtime=False, extra_llc_flags=flags)
 
 
@@ -183,7 +191,7 @@ def test_incompatible_pointer_layout_is_rejected_before_optimization(fake_tools:
     versions = json.loads(fake_tools["config"].read_text())
     versions["decoded_ir"] = text
     fake_tools["config"].write_text(json.dumps(versions))
-    with pytest.raises(RuntimeError, match="incompatible LLVM data layout.*16-bit pointer/data layout"):
+    with pytest.raises(RuntimeError, match="incompatible private LLVM storage layout.*native-word frontend"):
         compile_fake(fake_tools, runtime=False)
     invocations = calls(fake_tools) if fake_tools["log"].exists() else []
     assert all(name == "opt" and "-passes=verify" in args for name, args in invocations)
@@ -196,3 +204,18 @@ def test_optimizer_receives_the_target_layout_before_processing_ir(fake_tools: d
     compile_fake(fake_tools, runtime=False)
     args = next(args for name, args in calls(fake_tools) if name == "opt")
     assert "-data-layout=" + driver.DATA_LAYOUT in args
+
+
+@pytest.mark.parametrize(("text", "diagnostic"), [
+    ("define i16 @main() { ret i16 42 }\n", "missing the potados.word-addressed"),
+    (ABI_MARKER + "define i16 @main() {\n %x = load i16, ptr null\n ret i16 %x\n}\n", "word memory/address operations"),
+    (ABI_MARKER + "define i16 @main() {\n %x = ptrtoint ptr null to i16\n ret i16 %x\n}\n", "word memory/address operations"),
+    (ABI_MARKER + "declare void @llvm.memcpy.p0.p0.i16(ptr, ptr, i16, i1)\n" + IR, "memory intrinsics count octets"),
+    (ABI_MARKER + "@x = global [2 x i8] zeroinitializer\n" + IR, "cells of at least 16 bits"),
+])
+def test_incompatible_word_abi_is_rejected(fake_tools: dict[str, Any], text: str, diagnostic: str) -> None:
+    fake_tools["source"] = fake_tools["source"].with_suffix(".ll")
+    fake_tools["source"].write_text(text)
+    with pytest.raises(RuntimeError, match=diagnostic):
+        compile_fake(fake_tools, runtime=False)
+    assert not fake_tools["log"].exists()

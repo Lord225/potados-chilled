@@ -3,13 +3,15 @@ name = "potados-chilled"
 version = "0.1.0"
 description = "Simple Tang Nano 20K FPGA starter project"
 readme = "README.md"
-requires-python = "==3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "cocotb>=2.0.1",
     "pytest>=9.0.3",
+    "pycparser>=3.0",
+    "llvmlite>=0.45",
 ]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]
-pythonpath = ["asm/src", "llvm/potados-emulator/src"]
+pythonpath = ["asm/src", "llvm/potados-emulator/src", "llvm/potados-frontend/src"]
 testpaths = ["tb", "asm/tests", "llvm/tests"]

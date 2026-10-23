@@ -47,3 +47,81 @@ bool PotadosInstrInfo::expandPostRAPseudo(MachineInstr &) const {
 unsigned PotadosInstrInfo::getInstSizeInBytes(const MachineInstr &) const {
   return 2;
 }
+bool PotadosInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
+                                     MachineBasicBlock *&TBB,
+                                     MachineBasicBlock *&FBB,
+                                     SmallVectorImpl<MachineOperand> &Cond,
+                                     bool) const {
+  TBB = FBB = nullptr;
+  Cond.clear();
+  for (auto I = MBB.getFirstTerminator(), E = MBB.end(); I != E; ++I) {
+    if (I->isDebugInstr())
+      continue;
+    if (I->getOpcode() == Potados::BRCC && !TBB) {
+      TBB = I->getOperand(2).getMBB();
+      Cond.push_back(I->getOperand(0));
+      Cond.push_back(I->getOperand(1));
+      Cond.push_back(I->getOperand(3));
+    } else if (I->getOpcode() == Potados::BR && !FBB) {
+      if (!TBB)
+        TBB = I->getOperand(0).getMBB();
+      else if (!Cond.empty())
+        FBB = I->getOperand(0).getMBB();
+      else
+        return true;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+unsigned PotadosInstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                        int *BytesRemoved) const {
+  unsigned Count = 0;
+  if (BytesRemoved)
+    *BytesRemoved = 0;
+  auto I = MBB.end();
+  while (I != MBB.begin()) {
+    --I;
+    if (I->isDebugInstr())
+      continue;
+    if (I->getOpcode() != Potados::BR && I->getOpcode() != Potados::BRCC)
+      break;
+    if (BytesRemoved)
+      *BytesRemoved += getInstSizeInBytes(*I);
+    I = MBB.erase(I);
+    ++Count;
+  }
+  return Count;
+}
+unsigned PotadosInstrInfo::insertBranch(
+    MachineBasicBlock &MBB, MachineBasicBlock *TBB, MachineBasicBlock *FBB,
+    ArrayRef<MachineOperand> Cond, const DebugLoc &DL, int *BytesAdded) const {
+  if (!TBB || (Cond.size() != 0 && Cond.size() != 3) || (Cond.empty() && FBB))
+    report_fatal_error("invalid POTADOS branch insertion");
+  unsigned Count = 1;
+  if (Cond.empty()) {
+    BuildMI(&MBB, DL, get(Potados::BR)).addMBB(TBB);
+  } else {
+    BuildMI(&MBB, DL, get(Potados::BRCC))
+        .add(Cond[0])
+        .add(Cond[1])
+        .addMBB(TBB)
+        .add(Cond[2]);
+    if (FBB) {
+      BuildMI(&MBB, DL, get(Potados::BR)).addMBB(FBB);
+      ++Count;
+    }
+  }
+  if (BytesAdded)
+    *BytesAdded = Count * 2;
+  return Count;
+}
+bool PotadosInstrInfo::reverseBranchCondition(
+    SmallVectorImpl<MachineOperand> &Cond) const {
+  if (Cond.size() != 3 || !Cond[2].isImm())
+    return true;
+  Cond[2].setImm(ISD::getSetCCInverse(
+      static_cast<ISD::CondCode>(Cond[2].getImm()), MVT::i16));
+  return false;
+}

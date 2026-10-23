@@ -24,6 +24,37 @@ class Program:
 
 
 PROGRAMS = (
+    Program("native_cell_layout", """
+        #include <limits.h>
+        #include <stddef.h>
+        #include <stdint.h>
+        #include <stdbool.h>
+        _Static_assert(CHAR_BIT == 16, "native byte is a word");
+        _Static_assert(sizeof(char) == 1, "char size");
+        _Static_assert(sizeof(short) == 1, "short size");
+        _Static_assert(sizeof(int) == 1, "int size");
+        _Static_assert(sizeof(void *) == 1, "pointer size");
+        _Static_assert(sizeof(long) == 2, "long size");
+        _Static_assert(sizeof(long long) == 4, "long long size");
+        struct record { unsigned char tag; uint16_t value; unsigned char end; };
+        struct __attribute__((packed)) packed_record { unsigned char tag; uint16_t value; unsigned char end; };
+        _Static_assert(sizeof(struct record) == 3, "native structure layout");
+        _Static_assert(sizeof(struct packed_record) == 3, "packed structure layout");
+        _Static_assert(offsetof(struct record, value) == 1, "native member offset");
+        _Static_assert(offsetof(struct record, end) == 2, "native trailing offset");
+        volatile unsigned char cells[] = {0xABCD, 0xFFFF, 0x8000};
+        volatile signed char low = -32768, high = 32767;
+        int main(void) {
+            unsigned char local[3];
+            uintptr_t address = (uintptr_t)&local[0];
+            ptrdiff_t distance = &local[2] - &local[0];
+            bool okay = cells[0] == 0xABCD && cells[1] == UCHAR_MAX && cells[2] == 0x8000;
+            okay = okay && low < 0 && high > 0;
+            okay = okay && (unsigned char *)address == local && distance == 2;
+            okay = okay && (uintptr_t)&local[1] == address + 1;
+            return okay ? 42 : 1;
+        }
+    """, 42),
     Program("arithmetic16", """
         typedef unsigned short u16;
         volatile u16 a = 0xFEDC, b = 0xBEEF;
@@ -99,7 +130,7 @@ PROGRAMS = (
         volatile u16 input = 0xA581;
         int main(void) { return helper(input, 0x55AA); }
     """, 0xA581 ^ 0x55AA),
-    Program("byte_array", """
+    Program("character_array", """
         typedef unsigned short u16;
         volatile unsigned char data[] = {0x81, 0x12, 0xFF, 0x7F, 0};
         int main(void) {
@@ -118,7 +149,7 @@ PROGRAMS = (
             return records[0].value + records[0].tag + records[0].end + records[1].tag + records[1].end;
         }
     """, (0x1234 ^ 0x7FED) + 10),
-    Program("signed_bytes", """
+    Program("signed_characters", """
         volatile signed char data[] = {-128, -1, 127, 0};
         int main(void) {
             data[3] = -5;

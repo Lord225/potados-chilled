@@ -24,14 +24,15 @@ Compile and run freestanding C:
 ```sh
 git submodule update --init llvm/llvm-project
 python3 llvm/scripts/build.py all
-python3 llvm/scripts/compile.py llvm/examples/src/sample.c -o build/sample.asm -O2
-.venv/bin/python llvm/scripts/run.py run build/sample.asm
-.venv/bin/python llvm/scripts/run.py debug build/sample.asm
+uv run --project llvm python llvm/scripts/compile.py llvm/examples/src/sample.c -o build/sample.asm -O2
+uv run --project llvm python llvm/scripts/run.py run build/sample.asm
+uv run --project llvm python llvm/scripts/run.py debug build/sample.asm
 ```
 
-The sample returns 42 in R2. The compiler preserves byte-addressed C pointers
-on the word-addressed CPU, and expands full 16-bit multiplication using the
-native unsigned 8×8→16 multiplier. See the [ISA](potados_spec.md) and
+The sample returns 42 in R2. The native C frontend uses 16-bit addressable words,
+16-bit integers and pointers, and `sizeof(int) == 1`. Pointer increments advance
+one word: `io[1]` from address `0x8000` accesses `0x8001`. The backend expands
+full 16-bit multiplication using the native unsigned 8×8→16 multiplier. See the [ISA](potados_spec.md) and
 [compiler ABI](llvm/docs/abi.md) for the memory and calling conventions.
 Execution and debugging use cocotb and Verilator running the CPU in `rtl/potados.sv`.
 The simulator wrapper exposes the real pipeline and memory state; stepping

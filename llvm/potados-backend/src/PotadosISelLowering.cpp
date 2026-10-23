@@ -56,6 +56,12 @@ const char *PotadosTargetLowering::getTargetNodeName(unsigned Op) const {
     return "PotadosISD::BR_CC";
   case PotadosISD::SETCC:
     return "PotadosISD::SETCC";
+  case PotadosISD::ADDRESS:
+    return "PotadosISD::ADDRESS";
+  case PotadosISD::LOAD_WORD:
+    return "PotadosISD::LOAD_WORD";
+  case PotadosISD::STORE_WORD:
+    return "PotadosISD::STORE_WORD";
   default:
     return nullptr;
   }
@@ -159,6 +165,47 @@ PotadosTargetLowering::LowerCall(CallLoweringInfo &CLI,
   CLI.IsTailCall = false;
   SelectionDAG &DAG = CLI.DAG;
   SDLoc DL = CLI.DL;
+  StringRef CalleeName;
+  if (auto *G = dyn_cast<GlobalAddressSDNode>(CLI.Callee))
+    CalleeName = G->getGlobal()->getName();
+  else if (auto *E = dyn_cast<ExternalSymbolSDNode>(CLI.Callee))
+    CalleeName = E->getSymbol();
+  if (CalleeName == "__potados_address") {
+    if (CLI.OutVals.size() != 1 || CLI.Ins.size() != 1)
+      report_fatal_error("invalid POTADOS address operation signature");
+    // Do not expose frame/global alignment to KnownBits: native cell addresses
+    // may be odd even when their private LLVM objects have two-octet alignment.
+    InVals.push_back(
+        DAG.getNode(PotadosISD::ADDRESS, DL, MVT::i16, CLI.OutVals[0]));
+    return CLI.Chain;
+  }
+  bool WordLoad = CalleeName == "__potados_load_word" ||
+                  CalleeName == "__potados_load_volatile_word";
+  bool WordStore = CalleeName == "__potados_store_word" ||
+                   CalleeName == "__potados_store_volatile_word";
+  if (WordLoad || WordStore) {
+    if (CLI.OutVals.size() != (WordLoad ? 1u : 2u) ||
+        CLI.Ins.size() != (WordLoad ? 1u : 0u))
+      report_fatal_error("invalid POTADOS native memory operation signature");
+    auto Flags =
+        WordLoad ? MachineMemOperand::MOLoad : MachineMemOperand::MOStore;
+    if (CalleeName.contains("volatile"))
+      Flags |= MachineMemOperand::MOVolatile;
+    SmallVector<SDValue, 3> Ops = {CLI.Chain, CLI.OutVals[0]};
+    if (WordStore)
+      Ops.push_back(CLI.OutVals[1]);
+    SDValue Mem = DAG.getMemIntrinsicNode(
+        WordLoad ? PotadosISD::LOAD_WORD : PotadosISD::STORE_WORD, DL,
+        WordLoad ? DAG.getVTList(MVT::i16, MVT::Other)
+                 : DAG.getVTList(MVT::Other),
+        Ops, MVT::i16, MachinePointerInfo(), Align(1), Flags,
+        LocationSize::precise(2));
+    if (WordLoad) {
+      InVals.push_back(Mem);
+      return Mem.getValue(1);
+    }
+    return Mem;
+  }
   unsigned Bytes = CLI.OutVals.size() > std::size(ArgRegs)
                        ? (CLI.OutVals.size() - std::size(ArgRegs)) * 2
                        : 0;
@@ -166,13 +213,14 @@ PotadosTargetLowering::LowerCall(CallLoweringInfo &CLI,
   for (unsigned I = std::size(ArgRegs); I < CLI.OutVals.size(); ++I) {
     SDValue SP = DAG.getCopyFromReg(Chain, DL, Potados::SP, MVT::i16);
     Chain = SP.getValue(1);
-    // The architectural SP is word-addressed; pointers in the DAG are bytes.
-    SDValue Ptr = DAG.getNode(ISD::SHL, DL, MVT::i16, SP,
-                              DAG.getConstant(1, DL, MVT::i16));
-    Ptr = DAG.getNode(
-        ISD::ADD, DL, MVT::i16, Ptr,
-        DAG.getConstant((I - std::size(ArgRegs)) * 2, DL, MVT::i16));
-    Chain = DAG.getStore(Chain, DL, CLI.OutVals[I], Ptr, MachinePointerInfo());
+    // The reserved LLVM call frame counts octets; its native SP counts cells.
+    SDValue Ptr = SP;
+    Ptr = DAG.getNode(ISD::ADD, DL, MVT::i16, Ptr,
+                      DAG.getConstant(I - std::size(ArgRegs), DL, MVT::i16));
+    Chain = DAG.getMemIntrinsicNode(
+        PotadosISD::STORE_WORD, DL, DAG.getVTList(MVT::Other),
+        {Chain, Ptr, CLI.OutVals[I]}, MVT::i16, MachinePointerInfo(), Align(1),
+        MachineMemOperand::MOStore, LocationSize::precise(2));
   }
   SmallVector<SDValue, 10> Ops;
   SDValue Callee = CLI.Callee;

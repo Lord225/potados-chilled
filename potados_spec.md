@@ -63,7 +63,7 @@ ITOF 1110 DST 101 000   SRC_A
 FTOI 1110 DST 110 000   SRC_A
 FTOU 1110 DST 111 000   SRC_A
 
-HALT 1111 IIII IIII IIII
+HALT 1111 000 000 000 MSG
 ```
 
 ## Instruction reference
@@ -98,13 +98,35 @@ read `SRC_A`. Assembly operand order is `OP DST, SRC_A, SRC_B`.
 | `JMPR` | Jump to the word address in `SRC_A`. |
 | `JALR` | Jump to the word address in `SRC_A` and store the following instruction's address in `DST`. |
 | `FADD`, `FSUB`, `FMUL`, `FDIV`, `ITOF`, `FTOI`, `FTOU` | Floating-point extension encodings. The current CPU exposes an FPU interface but has no built-in FPU implementation. |
-| `HALT` | Halt execution; the lower 12 bits are available for extensions. |
+| `HALT [MSG]` | Halt execution and retain the three-bit diagnostic message in the CPU's `halt_message` output. Omitting the message selects No Message. |
 
 The effective shift amount is the signed 16-bit sum of the register and the
 sign-extended immediate, with addition wrapping to 16 bits. An amount of zero
 leaves the value unchanged. Magnitudes of 16 or greater shift out all bits;
 an arithmetic right shift of a negative value continues to fill with ones.
 Use `SH R2, ZERO, -1` for an immediate left shift of R2 by one bit.
+
+## HALT messages
+
+HALT uses primary opcode `1111` and a normally ordered message in bits `[2:0]`.
+Bits `[11:3]` are reserved and emitted as zero. Every message stops execution
+in the same way; the message is latched when HALT executes, remains available
+while the pipeline drains and after `potados_done`, and clears to zero on reset.
+
+| Message | Bits `[2:0]` | Instruction word | Assembly |
+| --- | --- | --- | --- |
+| No Message | `000` | `0xF000` | `HALT` or `HALT NO_MESSAGE` |
+| SHUT | `001` | `0xF001` | `HALT SHUT` |
+| PASS | `010` | `0xF002` | `HALT PASS` |
+| WAIT | `011` | `0xF003` | `HALT WAIT` |
+| ERROR | `100` | `0xF004` | `HALT ERROR` |
+| BREAK | `101` | `0xF005` | `HALT BREAK` |
+| ASSERT | `110` | `0xF006` | `HALT ASSERT` |
+| Reserved | `111` | `0xF007` | `HALT 7` |
+
+The assembler also accepts `NONE` for No Message and numeric codes `0..7`.
+WAIT, BREAK, and ASSERT are diagnostic labels; they do not add automatic
+resumption or change the CPU's existing HALT behavior.
 
 ## Register fields
 
@@ -141,3 +163,11 @@ and `LLI R2, 7` as `0x5E02`.
 ## Memory
 
 POTADOS has a 16-bit word address space, `0x0000..0xFFFF`, with 16-bit values.
+Consecutive addresses select consecutive words: `0x8000` and `0x8001` are
+neighboring cells. Odd word addresses are valid. LD/ST/LDSP/STSP displacements
+and stack updates count words. The default data map places RAM at
+`0x0000..0x7FFF` and external MMIO at `0x8000..0xFFFF`. Program ROM uses a
+separate word-addressed space.
+
+The native C toolchain uses these same units: `CHAR_BIT == 16`, 16-bit pointers,
+and `sizeof(int) == 1`. See the [compiler ABI](llvm/docs/abi.md).

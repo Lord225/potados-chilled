@@ -16,7 +16,7 @@ public:
       return SDValue(CurDAG->getMachineNode(Potados::LIga, DL, MVT::i16, V), 0);
     if (V.getOpcode() == ISD::FrameIndex)
       return SDValue(CurDAG->getMachineNode(
-                         Potados::LEAfi, DL, MVT::i16,
+                         Potados::LEAfiPrivate, DL, MVT::i16,
                          CurDAG->getTargetFrameIndex(
                              cast<FrameIndexSDNode>(V)->getIndex(), MVT::i16),
                          CurDAG->getTargetConstant(0, DL, MVT::i16)),
@@ -68,6 +68,40 @@ public:
         N->getOpcode() == PotadosISD::BR_CC || Binary)
       CurDAG->UpdateNodeOperands(N, Ops);
     switch (N->getOpcode()) {
+    case PotadosISD::ADDRESS: {
+      // Only this operation converts a private backing object into a native C
+      // pointer. Other frame-index users belong to LLVM legalization and must
+      // retain octet offsets until their private load/store is selected.
+      if (N->getOperand(0).getOpcode() == ISD::FrameIndex) {
+        SDValue FI = CurDAG->getTargetFrameIndex(
+            cast<FrameIndexSDNode>(N->getOperand(0))->getIndex(), MVT::i16);
+        CurDAG->SelectNodeTo(N, Potados::LEAfi, MVT::i16, FI,
+                             CurDAG->getTargetConstant(0, DL, MVT::i16));
+        return;
+      }
+      SDValue Ptr = materialize(N->getOperand(0), DL);
+      CurDAG->SelectNodeTo(N, Potados::MOV, MVT::i16, Ptr);
+      return;
+    }
+    case PotadosISD::LOAD_WORD:
+    case PotadosISD::STORE_WORD: {
+      auto *Mem = cast<MemSDNode>(N);
+      bool Load = N->getOpcode() == PotadosISD::LOAD_WORD;
+      SDValue Ptr = materialize(N->getOperand(1), DL);
+      SmallVector<SDValue, 3> MemOps;
+      if (!Load)
+        MemOps.push_back(materialize(N->getOperand(2), DL));
+      MemOps.push_back(Ptr);
+      MemOps.push_back(N->getOperand(0));
+      MachineMemOperand *MMO = Mem->getMemOperand();
+      SDNode *Selected =
+          CurDAG->SelectNodeTo(N, Load ? Potados::LD16 : Potados::ST16,
+                               Load ? CurDAG->getVTList(MVT::i16, MVT::Other)
+                                    : CurDAG->getVTList(MVT::Other),
+                               MemOps);
+      CurDAG->setNodeMemRefs(cast<MachineSDNode>(Selected), {MMO});
+      return;
+    }
     case ISD::MUL:
       if (CurDAG->computeKnownBits(N->getOperand(0)).getMaxValue().ule(255) &&
           CurDAG->computeKnownBits(N->getOperand(1)).getMaxValue().ule(255)) {
@@ -79,12 +113,14 @@ public:
     case ISD::FrameIndex: {
       SDValue FI = CurDAG->getTargetFrameIndex(
           cast<FrameIndexSDNode>(N)->getIndex(), MVT::i16);
-      CurDAG->SelectNodeTo(N, Potados::LEAfi, MVT::i16, FI,
+      CurDAG->SelectNodeTo(N, Potados::LEAfiPrivate, MVT::i16, FI,
                            CurDAG->getTargetConstant(0, DL, MVT::i16));
       return;
     }
     case ISD::LOAD: {
       auto *L = cast<LoadSDNode>(N);
+      if (L->getMemoryVT() != MVT::i16)
+        report_fatal_error("POTADOS native C storage requires 16-bit cells");
       SDValue Ptr = L->getBasePtr();
       if (L->getMemoryVT() == MVT::i16 && Ptr.getOpcode() == ISD::FrameIndex) {
         SDValue FI = CurDAG->getTargetFrameIndex(
@@ -94,15 +130,15 @@ public:
             {FI, CurDAG->getTargetConstant(0, DL, MVT::i16), L->getChain()});
       } else {
         Ptr = materialize(Ptr, DL);
-        unsigned Op = L->getMemoryVT() == MVT::i16             ? Potados::LD16
-                      : L->getExtensionType() == ISD::SEXTLOAD ? Potados::LD8S
-                                                               : Potados::LD8Z;
-        CurDAG->SelectNodeTo(N, Op, MVT::i16, MVT::Other, {Ptr, L->getChain()});
+        CurDAG->SelectNodeTo(N, Potados::LDprivate, MVT::i16, MVT::Other,
+                             {Ptr, L->getChain()});
       }
       return;
     }
     case ISD::STORE: {
       auto *S = cast<StoreSDNode>(N);
+      if (S->getMemoryVT() != MVT::i16)
+        report_fatal_error("POTADOS native C storage requires 16-bit cells");
       SDValue Ptr = S->getBasePtr();
       SDValue Value = materialize(S->getValue(), DL);
       if (S->getMemoryVT() == MVT::i16 && Ptr.getOpcode() == ISD::FrameIndex) {
@@ -114,9 +150,8 @@ public:
                               S->getChain()});
       } else {
         Ptr = materialize(Ptr, DL);
-        CurDAG->SelectNodeTo(
-            N, S->getMemoryVT() == MVT::i16 ? Potados::ST16 : Potados::ST8,
-            MVT::Other, Value, Ptr, S->getChain());
+        CurDAG->SelectNodeTo(N, Potados::STprivate, MVT::Other, Value, Ptr,
+                             S->getChain());
       }
       return;
     }

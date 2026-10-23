@@ -10,6 +10,7 @@ module potados_sim_top #(
     input logic [15:0] io_read_data,
     output logic [111:0] registers_out,
     output logic done,
+    output logic [2:0] halt_message,
     output logic [15:0] pc,
     output logic [15:0] io_address,
     output logic io_read_enable,
@@ -41,7 +42,7 @@ module potados_sim_top #(
         .RAM_HIGH_ADDRESS(RAM_HIGH_ADDRESS)
     ) cpu (
         .clk(clk), .reset(reset), .registers_out(registers_out),
-        .potados_done(done), .pc_out(pc), .io_address(io_address),
+        .potados_done(done), .halt_message(halt_message), .pc_out(pc), .io_address(io_address),
         .io_read_enable(io_read_enable), .io_write_enable(io_write_enable),
         .io_write_data(io_write_data), .io_read_data(io_read_data)
     );

@@ -21,6 +21,16 @@ def pret : SDNode<"PotadosISD::RET", SDTNone, [SDNPHasChain, SDNPOptInGlue, SDNP
 def pcall : SDNode<"PotadosISD::CALL", SDT_PCall, [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue, SDNPVariadic]>;
 def pbr : SDNode<"PotadosISD::BR_CC", SDT_PBr, [SDNPHasChain]>;
 def pset : SDNode<"PotadosISD::SETCC", SDT_PSet>;
+// C addresses count 16-bit cells. Keep these opaque to the ordinary LLVM
+// memory DAG, whose object offsets and alias sizes count eight-bit octets.
+def SDT_PAddress : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
+def SDT_PLoad : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
+def SDT_PStore : SDTypeProfile<0, 2, [SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
+def paddress : SDNode<"PotadosISD::ADDRESS", SDT_PAddress>;
+def ploadword : SDNode<"PotadosISD::LOAD_WORD", SDT_PLoad,
+                      [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def pstoreword : SDNode<"PotadosISD::STORE_WORD", SDT_PStore,
+                       [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
 def pcallstart : SDNode<"ISD::CALLSEQ_START", SDT_PCallStart, [SDNPHasChain, SDNPOutGlue]>;
 def pcallend : SDNode<"ISD::CALLSEQ_END", SDT_PCallEnd, [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 def brtarget : Operand<OtherVT>;
@@ -51,20 +61,21 @@ let Constraints = "$dst = $src" in {
 }
 let mayLoad = 1, Defs = [R6] in {
   def LD16 : PInst<(outs GPR:$dst), (ins GPR:$ptr)>;
-  def LD8Z : PInst<(outs GPR:$dst), (ins GPR:$ptr)> { let Uses = [SP]; let mayStore = 1; }
-  def LD8S : PInst<(outs GPR:$dst), (ins GPR:$ptr)> { let Uses = [SP]; let mayStore = 1; }
+  def LDprivate : PInst<(outs GPR:$dst), (ins GPR:$ptr)>;
   def LDfi : PInst<(outs ALL:$dst), (ins i16imm:$fi, i16imm:$offset)>;
   def LDsp : PInst<(outs ALL:$dst), (ins i16imm:$offset)> { let Uses = [SP]; }
 }
 let mayStore = 1, Defs = [R6] in {
   def ST16 : PInst<(outs), (ins GPR:$src, GPR:$ptr)>;
-  def ST8 : PInst<(outs), (ins GPR:$src, GPR:$ptr)> { let Uses = [SP]; let mayLoad = 1; }
+  def STprivate : PInst<(outs), (ins GPR:$src, GPR:$ptr)>;
   def STfi : PInst<(outs), (ins ALL:$src, i16imm:$fi, i16imm:$offset)>;
   def STsp : PInst<(outs), (ins ALL:$src, i16imm:$offset)> { let Uses = [SP]; }
 }
 let Uses = [SP] in {
   def LEAfi : PInst<(outs GPR:$dst), (ins i16imm:$fi, i16imm:$offset)>;
   def LEAsp : PInst<(outs GPR:$dst), (ins i16imm:$offset)> { let Defs = [R6]; }
+  def LEAfiPrivate : PInst<(outs GPR:$dst), (ins i16imm:$fi, i16imm:$offset)>;
+  def LEAspPrivate : PInst<(outs GPR:$dst), (ins i16imm:$offset)> { let Defs = [R6]; }
 }
 let Uses = [SP], Defs = [SP, R6] in
   def ADJSP : PInst<(outs), (ins i16imm:$amount)>;

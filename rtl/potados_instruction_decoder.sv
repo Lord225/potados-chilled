@@ -741,6 +741,7 @@ module potados_decode_stage(
 
                 OP_HALT: begin
                     execute_stage.halt = 1'b1;
+                    execute_stage.operand_b_value = {13'b0, decoded_instruction.immediate[2:0]};
                 end
 
                 default: begin

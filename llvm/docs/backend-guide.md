@@ -1,16 +1,17 @@
 # Backend implementation and debugging
 
 The directory structure follows the KAMP reference project, while the target
-implementation uses POTADOS registers, instructions, byte memory lowering,
+implementation uses POTADOS registers, instructions, native word memory lowering,
 and calling convention. The module is registered under `potados_chilled`.
 LLVM's closed architecture enum has no out-of-tree POTADOS member, so command
 lines select it explicitly with `-march=potados_chilled`.
 
 ## Stages
 
-1. `compile.py` invokes a freestanding MSP430 Clang frontend to establish the
-   supported 16-bit pointer/data layout. LLVM optimizations are disabled at
-   this stage so that the subsequent optimizer pipeline is explicit.
+1. `compile.py` preprocesses C with Clang, then invokes the native POTADOS
+   frontend. C has 16-bit bytes and cell-based `sizeof`, layouts, and pointer
+   arithmetic. The frontend emits word-addressed memory operations and an ABI
+   marker; it does not use Clang's eight-bit-byte type/layout computation.
 2. The LLVM IR linker combines the input with the freestanding runtime.
 3. `opt` runs the selected default optimization pipeline.
 4. `llc` loads `Potados.so`, performs SelectionDAG lowering and target
@@ -38,6 +39,12 @@ The machine-instruction forms are compiler implementation details. The Python
 assembler remains the authoritative binary encoder and the ISA specification
 records the hardware-visible layout.
 
+Native C pointers and object offsets always count words. LLVM-generated
+private scratch objects and frame bookkeeping still use LLVM octet units;
+the backend converts those through a separate private address/load/store path.
+Keeping these paths distinct prevents LLVM legalization temporaries from
+changing C pointer arithmetic or escaping their allocated stack slots.
+
 ## Investigating failures
 
 Keep the compiler input, `*.frontend.ll`, `*.optimized.ll`, and `*.asm` together.
@@ -59,7 +66,7 @@ inspect the spill instructions.
 
 Once assembly succeeds, use the RTL debugger, clock-cycle JSONL trace, and
 Verilator waveforms to locate the first divergence. Trace records expose real
-fetch/accept, execute, writeback, and memory signals. Check byte-lane selection,
+fetch/accept, execute, writeback, and memory signals. Check native cell offsets,
 signed comparison direction, shift amount sign, caller-saved registers, and
 pipeline dependencies. A debugger breakpoint pauses fetch acceptance; earlier
 instructions can still be in flight, so inspect the cycle trace before treating
@@ -68,6 +75,6 @@ a register snapshot as a completed-instruction state.
 Changes to the ISA must update the RTL, assembler, display-only disassembler,
 native runtime assembly, compiler expansion, and their golden encodings
 together. Execution remains defined by the RTL rather than a second Python
-implementation of the ISA. In particular, native MUL is an unsigned byte multiply;
+implementation of the ISA. In particular, native MUL is an unsigned 8-bit multiply;
 replacing compiler 16-bit multiplication with a single MUL silently truncates
 its operands.

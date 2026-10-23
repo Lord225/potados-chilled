@@ -1,0 +1,26 @@
+[project]
+name = "potados-toolchain"
+version = "0.1.0"
+description = "Native word-addressed POTADOS C/LLVM toolchain and RTL runner"
+requires-python = ">=3.10"
+dependencies = [
+    "pycparser>=3.0",
+    "llvmlite>=0.45",
+    "potados-asm",
+    "potados-emulator",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = ["pytest>=9.0"]
+
+[tool.uv.sources]
+potados-asm = { path = "../asm", editable = true }
+potados-emulator = { path = "potados-emulator", editable = true }
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]
+pythonpath = ["../asm/src", "potados-emulator/src", "potados-frontend/src"]
+testpaths = ["tests"]
