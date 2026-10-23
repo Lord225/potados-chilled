@@ -52,122 +52,59 @@ async def _expect(
 
 @cocotb.test()
 async def flat_fixed_instruction_decoding(dut: Dut) -> None:
-    # NOP: 0b0000_000_000_000_000
-    await _expect(
-        dut, 0b0000_000_000_000_000,
-        op_primary=0b0000, dst=0b000, op_secondary=0b000,
-        src_a=0b000, src_b=0b000, immediate=0x0000,
-    )
-
-    # ADD R5, R4, R5: 0b0000_101_001_100_101
-    await _expect(
-        dut, 0b0000_101_001_100_101,
-        op_primary=0b0000, dst=0b101, op_secondary=0b001,
-        src_a=0b100, src_b=0b101, immediate=0x0000,
-    )
-
-    # SGE R6, R7, R2: 0b0001_110_000_111_010
-    await _expect(
-        dut, 0b0001_110_000_111_010,
-        op_primary=0b0001, dst=0b110, op_secondary=0b000,
-        src_a=0b111, src_b=0b010, immediate=0x0000,
-    )
-
-    # POP R6: 0b1100_000_010_000_110
-    await _expect(
-        dut, 0b1100_000_010_000_110,
-        op_primary=0b1100, dst=0b110, op_secondary=0b010,
-        src_a=0b000, src_b=0b110, immediate=0x0000,
-    )
-
-    # JALR R1 -> R7: 0b1101_000_000_010_111
-    await _expect(
-        dut, 0b1101_000_000_010_111,
-        op_primary=0b1101, dst=0b111, op_secondary=0b000,
-        src_a=0b010, src_b=0b111, immediate=0x0000,
-    )
-
-    # FADD R3, R2, R1: 0b1110_011_001_010_001
-    await _expect(
-        dut, 0b1110_011_001_010_001,
-        op_primary=0b1110, dst=0b011, op_secondary=0b001,
-        src_a=0b010, src_b=0b001, immediate=0x0000,
-    )
-
-    # HALT: 0b1111_010_110_100_011
-    await _expect(
-        dut, 0b1111_010_110_100_011,
-        op_primary=0b1111, dst=0b000, op_secondary=0b110,
-        src_a=0b100, src_b=0b011, immediate=0xF5A3,
-    )
+    # Literal words from the ISA; asymmetric sources expose field swaps.
+    for word, primary, dst, function, src_a, src_b in (
+        (0x0000, 0, 0, 0, 0, 0),       # NOP
+        (0x0A6C, 0, 5, 1, 4, 5),       # ADD R5, R4, R5
+        (0x1CD7, 1, 6, 3, 7, 2),       # SGE R6, R7, R2
+        (0xCC80, 12, 6, 2, 0, 0),      # POP R6
+        (0xDE81, 13, 7, 2, 1, 0),      # JALR R7, SP
+        (0xE64A, 14, 3, 1, 2, 1),      # FADD R3, R2, SP
+    ):
+        await _expect(dut, word, op_primary=primary, dst=dst,
+                      op_secondary=function, src_a=src_a, src_b=src_b, immediate=0)
+    await _expect(dut, 0xF5A3, op_primary=15, dst=0, op_secondary=6,
+                  src_a=3, src_b=4, immediate=0xF5A3)
 
 
 @cocotb.test()
 async def flat_immediate_edge_case_decoding(dut: Dut) -> None:
-    # SH: canonical signed IMM5 values occupy bits [10:6]; bit [11] is reserved.
-    await _expect(dut, 0b0010_000001_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b001, src_a=0b010, src_b=0b010, immediate=0x0001)
-    await _expect(dut, 0b0010_011111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
-    await _expect(dut, 0b0010_001111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x000F)
-    await _expect(dut, 0b0010_010000_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFF0)
-    # A noncanonical word with reserved bit [11] set still decodes from IMM5.
-    await _expect(dut, 0b0010_111111_010_010, op_primary=0b0010, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
-
-    # ASH uses the same signed 5-bit immediate field.
-    await _expect(dut, 0b0011_000001_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b001, src_a=0b010, src_b=0b010, immediate=0x0001)
-    await _expect(dut, 0b0011_011111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0xFFFF)
-    await _expect(dut, 0b0011_001111_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b111, src_a=0b010, src_b=0b010, immediate=0x000F)
-    await _expect(dut, 0b0011_010000_010_010, op_primary=0b0011, dst=0b010, op_secondary=0b000, src_a=0b010, src_b=0b010, immediate=0xFFF0)
-
-    # ADDI: immediate 1, -1, maximum (255), and minimum (-256).
-    await _expect(dut, 0b0100_000001_000_110, op_primary=0b0100, dst=0b110, op_secondary=0b001, src_a=0b000, src_b=0b110, immediate=0x0001)
-    await _expect(dut, 0b0100_111111_111_111, op_primary=0b0100, dst=0b111, op_secondary=0b111, src_a=0b111, src_b=0b111, immediate=0xFFFF)
-    await _expect(dut, 0b0100_111111_011_110, op_primary=0b0100, dst=0b110, op_secondary=0b111, src_a=0b011, src_b=0b110, immediate=0x00FF)
-    await _expect(dut, 0b0100_000000_100_010, op_primary=0b0100, dst=0b010, op_secondary=0b000, src_a=0b100, src_b=0b010, immediate=0xFF00)
-
-    # LLI/LUI, LDSP, and STSP use the same signed 9-bit immediate extraction.
-    await _expect(dut, 0b0101_000001_000_110, op_primary=0b0101, dst=0b110, op_secondary=0b001, src_a=0b000, src_b=0b110, immediate=0x0001)
-    await _expect(dut, 0b0101_111111_111_111, op_primary=0b0101, dst=0b111, op_secondary=0b111, src_a=0b111, src_b=0b111, immediate=0xFFFF)
-    await _expect(dut, 0b1000_111111_011_110, op_primary=0b1000, dst=0b110, op_secondary=0b111, src_a=0b011, src_b=0b110, immediate=0x00FF)
-    await _expect(dut, 0b1001_000000_100_010, op_primary=0b1001, dst=0b010, op_secondary=0b000, src_a=0b100, src_b=0b010, immediate=0xFF00)
-
-    # LD: displacement 1, -1, maximum (31), and minimum (-32).
-    await _expect(dut, 0b0110_000001_110_001, op_primary=0b0110, dst=0b001, op_secondary=0b001, src_a=0b110, src_b=0b001, immediate=0x0001)
-    await _expect(dut, 0b0110_111111_110_001, op_primary=0b0110, dst=0b001, op_secondary=0b111, src_a=0b110, src_b=0b001, immediate=0xFFFF)
-    await _expect(dut, 0b0110_011111_110_001, op_primary=0b0110, dst=0b001, op_secondary=0b111, src_a=0b110, src_b=0b001, immediate=0x001F)
-    await _expect(dut, 0b0110_100000_110_001, op_primary=0b0110, dst=0b001, op_secondary=0b000, src_a=0b110, src_b=0b001, immediate=0xFFE0)
-
-    # ST uses the same signed 6-bit displacement field.
-    await _expect(dut, 0b0111_000001_110_001, op_primary=0b0111, dst=0b001, op_secondary=0b001, src_a=0b110, src_b=0b001, immediate=0x0001)
-    await _expect(dut, 0b0111_111111_110_001, op_primary=0b0111, dst=0b001, op_secondary=0b111, src_a=0b110, src_b=0b001, immediate=0xFFFF)
-    await _expect(dut, 0b0111_011111_110_001, op_primary=0b0111, dst=0b001, op_secondary=0b111, src_a=0b110, src_b=0b001, immediate=0x001F)
-    await _expect(dut, 0b0111_100000_110_001, op_primary=0b0111, dst=0b001, op_secondary=0b000, src_a=0b110, src_b=0b001, immediate=0xFFE0)
+    # Walk every instruction bit used by each immediate. Expected weights
+    # come directly from the ISA's 1, 2, 4, ... sign-bit row.
+    for primary, width in ((2, 5), (3, 5), (4, 8), (5, 8),
+                           (6, 6), (7, 6), (8, 8), (9, 8)):
+        cases = [(0, 0), (((1 << width) - 1) << (12 - width),
+                          (1 << width) - 1)]
+        cases += [(1 << (11 - bit), 1 << bit) for bit in range(width)]
+        for encoded, value in cases:
+            word = (primary << 12) | encoded | 2
+            signed = value - (1 << width) if value & (1 << (width - 1)) else value
+            immediate = value if primary == 5 else signed & 0xFFFF
+            await _expect(dut, word, op_primary=primary, dst=2,
+                          op_secondary=(word >> 6) & 7, src_a=2,
+                          src_b=(word >> 3) & 7, immediate=immediate)
+    # Reserved bits do not become immediate bits. Bit 3 selects LUI only.
+    for word, primary, function, src_b, immediate in (
+        (0x2842, 2, 1, 0, 1),
+        (0x480A, 4, 0, 1, 1),
+        (0x580A, 5, 0, 1, 1),
+        (0x880A, 8, 0, 1, 1),
+        (0x980A, 9, 0, 1, 1),
+    ):
+        await _expect(dut, word, op_primary=primary, dst=2,
+                      op_secondary=function, src_a=2, src_b=src_b, immediate=immediate)
 
 
 @cocotb.test()
 async def flat_long_instruction_decoding(dut: Dut) -> None:
-    # JGE R4, R1, 0xBEEF with no second word yet.
-    await _expect(
-        dut, 0b1010_000_000_100_001,
-        op_primary=0b1010, dst=0b000, op_secondary=0b000,
-        src_a=0b100, src_b=0b001, immediate=0xBEEF,
-        partialy_decoded=1, is_long=1, instruction_high=0xBEEF,
-    )
-
-    # The same JGE once its second word is valid.
-    await _expect(
-        dut, 0b1010_000_000_100_001,
-        op_primary=0b1010, dst=0b000, op_secondary=0b000,
-        src_a=0b100, src_b=0b001, immediate=0xBEEF,
-        partialy_decoded=0, is_long=1, instruction_high=0xBEEF, high_valid=1,
-    )
-
-    # JAL 0x1234, return address in R5.
-    await _expect(
-        dut, 0b1011_000_010_000_101,
-        op_primary=0b1011, dst=0b101, op_secondary=0b010,
-        src_a=0b000, src_b=0b101, immediate=0x1234,
-        partialy_decoded=0, is_long=1, instruction_high=0x1234, high_valid=1,
-    )
+    for high_valid in (0, 1):
+        await _expect(dut, 0xA0CC, op_primary=10, dst=0, op_secondary=3,
+                      src_a=4, src_b=1, immediate=0xBEEF,
+                      partialy_decoded=1-high_valid, is_long=1,
+                      instruction_high=0xBEEF, high_valid=high_valid)
+    await _expect(dut, 0xBA80, op_primary=11, dst=5, op_secondary=2,
+                  src_a=0, src_b=0, immediate=0x1234, is_long=1,
+                  instruction_high=0x1234, high_valid=1)
 
 
 def _runner() -> Runner:

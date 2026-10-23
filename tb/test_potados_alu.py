@@ -149,22 +149,16 @@ def _expected_output(
     if alu_op == ALU_XOR:
         return operand_a ^ operand_b, CMP_RESULT_NONE, 1
     if alu_op == ALU_NOT:
-        return (~operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
+        return (~operand_a) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_MUL:
         return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
-    if alu_op == ALU_SH:
-        shift = operand_b & 0x1F
-        if shift & 0x10:
-            result = operand_a >> ((-shift) & 0x1F)
+    if alu_op in (ALU_SH, ALU_ASH):
+        shift = _signed16(operand_b)
+        if shift < 0:
+            result = 0 if shift <= -16 else operand_a << -shift
         else:
-            result = operand_a << shift
-        return result & 0xFFFF, CMP_RESULT_NONE, 1
-    if alu_op == ALU_ASH:
-        shift = operand_b & 0x1F
-        if shift & 0x10:
-            result = _signed16(operand_a) >> ((-shift) & 0x1F)
-        else:
-            result = operand_a << shift
+            value = _signed16(operand_a) if alu_op == ALU_ASH else operand_a
+            result = value >> min(shift, 16)
         return result & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_SET:
         result = _compare(operand_a, operand_b, cmp_op)
@@ -211,7 +205,7 @@ async def arithmetic_and_logic_operations(dut: Dut) -> None:
     await _execute(dut, alu_op=ALU_XOR, operand_a=0xA5A5, operand_b=0x3C3C)
     assert int(dut.alu_output.value) == 0x9999
 
-    await _execute(dut, alu_op=ALU_NOT, operand_a=0x0000, operand_b=0x00F0)
+    await _execute(dut, alu_op=ALU_NOT, operand_a=0x00F0, operand_b=0x0000)
     assert int(dut.alu_output.value) == 0xFF0F
 
 
@@ -225,15 +219,15 @@ async def multiply_and_shift_operations(dut: Dut) -> None:
     assert int(dut.alu_output.value) == 0x369C
     assert int(dut.out_ready.value) == 1
 
-    await _execute(dut, alu_op=ALU_SH, operand_a=1, operand_b=4)
+    await _execute(dut, alu_op=ALU_SH, operand_a=1, operand_b=-4)
     assert int(dut.alu_output.value) == 0x0010
 
-    # Negative signed IMM5 values shift right; -1 shifts right by one bit.
-    await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=-1)
+    # Positive shift amounts shift right by that many bits.
+    await _execute(dut, alu_op=ALU_SH, operand_a=0x8001, operand_b=1)
     assert int(dut.alu_output.value) == 0x4000
 
-    # Negative signed IMM5 values preserve the sign for arithmetic shifts.
-    await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=-1)
+    # Arithmetic right shifts preserve the sign.
+    await _execute(dut, alu_op=ALU_ASH, operand_a=0x8001, operand_b=1)
     assert int(dut.alu_output.value) == 0xC000
 
 

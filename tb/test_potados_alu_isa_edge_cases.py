@@ -22,7 +22,7 @@ ALU_ASH = 9
 
 
 def _alu_request(*, operand_a: int, shift_amount: int, alu_op: int) -> int:
-    """Pack alu_request_t; SH/ASH consume the lower signed five bits."""
+    """Pack alu_request_t; SH/ASH consume the signed 16-bit register-plus-immediate sum."""
     return (
         ((operand_a & 0xFFFF) << 25)
         | ((shift_amount & 0xFFFF) << 9)
@@ -31,39 +31,39 @@ def _alu_request(*, operand_a: int, shift_amount: int, alu_op: int) -> int:
 
 
 @cocotb.test()
-async def negative_shift_amount_shifts_right(dut: Dut) -> None:
-    """ISA rule: SH 0x8001, -1 == 0x4000."""
+async def negative_shift_amount_shifts_left(dut: Dut) -> None:
+    """ISA rule: SH 0x8001, -1 == 0x0002."""
     dut.clk.value = 0
     dut.reset.value = 0
     dut.alu_request.value = _alu_request(
         operand_a=0x8001, shift_amount=-1, alu_op=ALU_SH
     )
     await Timer(1, unit="ns")
-    assert int(dut.alu_output.value) == 0x4000
+    assert int(dut.alu_output.value) == 0x0002
 
 
 @cocotb.test()
-async def positive_arithmetic_shift_shifts_left(dut: Dut) -> None:
-    """ISA rule: ASH 0x4001, 1 == 0x8002."""
+async def positive_arithmetic_shift_shifts_right(dut: Dut) -> None:
+    """ISA rule: ASH 0x8001, 1 == 0xC000."""
     dut.clk.value = 0
     dut.reset.value = 0
     dut.alu_request.value = _alu_request(
-        operand_a=0x4001, shift_amount=1, alu_op=ALU_ASH
+        operand_a=0x8001, shift_amount=1, alu_op=ALU_ASH
     )
     await Timer(1, unit="ns")
-    assert int(dut.alu_output.value) == 0x8002
+    assert int(dut.alu_output.value) == 0xC000
 
 
 @cocotb.test()
-async def imm6_sign_bit_is_ignored_by_shift_execution(dut: Dut) -> None:
-    """SH 0x1234, -32 uses low IMM5 == 0 and is therefore a no-op."""
+async def large_register_shift_does_not_wrap_to_five_bits(dut: Dut) -> None:
+    """SH 0x1234, -32 shifts every bit out."""
     dut.clk.value = 0
     dut.reset.value = 0
     dut.alu_request.value = _alu_request(
         operand_a=0x1234, shift_amount=-32, alu_op=ALU_SH
     )
     await Timer(1, unit="ns")
-    assert int(dut.alu_output.value) == 0x1234
+    assert int(dut.alu_output.value) == 0
 
 
 def _runner() -> Runner:
@@ -99,13 +99,13 @@ def _run_cocotb_test(runner: Runner, testcase: str) -> None:
         )
 
 
-def test_negative_shift_amount_shifts_right(alu_runner: Runner) -> None:
-    _run_cocotb_test(alu_runner, "negative_shift_amount_shifts_right")
+def test_negative_shift_amount_shifts_left(alu_runner: Runner) -> None:
+    _run_cocotb_test(alu_runner, "negative_shift_amount_shifts_left")
 
 
-def test_positive_arithmetic_shift_shifts_left(alu_runner: Runner) -> None:
-    _run_cocotb_test(alu_runner, "positive_arithmetic_shift_shifts_left")
+def test_positive_arithmetic_shift_shifts_right(alu_runner: Runner) -> None:
+    _run_cocotb_test(alu_runner, "positive_arithmetic_shift_shifts_right")
 
 
-def test_imm6_sign_bit_is_ignored_by_shift_execution(alu_runner: Runner) -> None:
-    _run_cocotb_test(alu_runner, "imm6_sign_bit_is_ignored_by_shift_execution")
+def test_large_register_shift_does_not_wrap_to_five_bits(alu_runner: Runner) -> None:
+    _run_cocotb_test(alu_runner, "large_register_shift_does_not_wrap_to_five_bits")

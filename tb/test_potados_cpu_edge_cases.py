@@ -189,6 +189,31 @@ async def halt_is_sticky_until_reset(dut: Dut) -> None:
         assert int(dut.potados_done.value) == 1
 
 
+@cocotb.test()
+async def shifts_use_both_forwarded_registers_and_signed_immediates(dut: Dut) -> None:
+    await _reset(dut, "edge_shift_register_immediate.asm")
+    await _run_until_halt(dut, maximum_cycles=256)
+    expected = [0xC000, 6, 6, 12, 2, 6, 0, 0xFFFF, 0xFFF9]
+    assert [ram(dut, address) for address in range(16, 25)] == expected
+
+
+@cocotb.test()
+async def immediate_boundaries_survive_the_full_pipeline(dut: Dut) -> None:
+    await _reset(dut, "edge_immediate_boundaries.asm")
+    await _run_until_halt(dut, maximum_cycles=256)
+    registers = int(dut.registers_out.value)
+    assert register(registers, 1) == 0x0100
+    assert register(registers, 2) == 0x127F
+    assert register(registers, 3) == 0x12FF
+    assert register(registers, 4) == 0x127F
+    assert register(registers, 6) == 0xFFFF
+    assert register(registers, 7) == 0xFF80
+    assert ram(dut, 0x0080) == 0x12FF
+    assert ram(dut, 0x017F) == 0x127F
+    assert ram(dut, 0x12DF) == 0xFFFF
+    assert ram(dut, 0x129E) == 0xFF80
+
+
 def _runner() -> Runner:
     runner = get_runner(os.getenv("SIM", "verilator"))
     shutil.rmtree(SIM_BUILD, ignore_errors=True)
@@ -298,3 +323,15 @@ def test_not_taken_conditional_jump_keeps_the_fallthrough_path(
 
 def test_halt_is_sticky_until_reset(edge_case_runner: Runner) -> None:
     _run_cocotb_test(edge_case_runner, "halt_is_sticky_until_reset")
+
+
+def test_shifts_use_both_forwarded_registers_and_signed_immediates(
+    edge_case_runner: Runner,
+) -> None:
+    _run_cocotb_test(
+        edge_case_runner, "shifts_use_both_forwarded_registers_and_signed_immediates"
+    )
+
+
+def test_immediate_boundaries_survive_the_full_pipeline(edge_case_runner: Runner) -> None:
+    _run_cocotb_test(edge_case_runner, "immediate_boundaries_survive_the_full_pipeline")

@@ -625,34 +625,24 @@ def _value(operand: Operand, symbols: Mapping[str, int], address: int) -> int:
 def _encode_register_fields(
     *, opcode: int, destination: int, function: int, source_a: int, source_b: int
 ) -> int:
-    """Encode the regular ``opcode/dst/function/src_a/src_b`` instruction form."""
+    """Encode the regular ``opcode/dst/function/src_b/src_a`` instruction form."""
     return (
         (opcode & 0b1111) << 12       # [15:12] primary opcode
         | (destination & 0b111) << 9  # [11:9]  destination register
         | (function & 0b111) << 6     # [8:6]   secondary opcode
-        | (source_a & 0b111) << 3     # [5:3]   left source register
-        | (source_b & 0b111)          # [2:0]   right source register
+        | (source_b & 0b111) << 3     # [5:3]   right source register
+        | (source_a & 0b111)          # [2:0]   left source register
     )
 
 
-def _encode_split_immediate_9(*, opcode: int, immediate: int, register: int) -> int:
-    """Encode the split IMM9 used by ADDI, LDSP, and STSP.
+def _encode_immediate(immediate: int, bits: int) -> int:
+    """Place immediate bit 0 at instruction bit 11, then descend toward bit 4."""
+    return sum(((immediate >> bit) & 1) << (11 - bit) for bit in range(bits))
 
-    The ISA places the low six immediate bits above the high three bits::
 
-        15          12 11             6 5          3 2          0
-        +-------------+----------------+------------+------------+
-        |   opcode    | immediate[5:0] | imm[8:6]   | register   |
-        +-------------+----------------+------------+------------+
-    """
-    immediate_low = immediate & 0b11_1111
-    immediate_high = (immediate >> 6) & 0b111
-    return (
-        (opcode & 0b1111) << 12
-        | immediate_low << 6
-        | immediate_high << 3
-        | (register & 0b111)
-    )
+def _encode_immediate_8(*, opcode: int, immediate: int, register: int) -> int:
+    """Encode IMM8 in [11:4], leaving reserved bit [3] clear."""
+    return (opcode << 12) | _encode_immediate(immediate, 8) | register
 
 
 def _memory_operand(operand: Operand) -> tuple[int, Operand]:
@@ -692,8 +682,8 @@ def _memory_operand(operand: Operand) -> tuple[int, Operand]:
 
 
 ALU_SECONDARY = {"ADD": 1, "SUB": 2, "AND": 3, "OR": 4, "XOR": 5, "MUL": 7}
-SET_SECONDARY = {"SGE": 0, "SL": 1, "SE": 2, "SNE": 3, "SAE": 4, "SB": 5}
-JUMP_SECONDARY = {"JGE": 0, "JL": 1, "JE": 2, "JNE": 3, "JAE": 4, "JB": 5}
+SET_SECONDARY = {"SGE": 3, "SL": 2, "SE": 5, "SNE": 4, "SAE": 6, "SB": 7}
+JUMP_SECONDARY = {"JGE": 3, "JL": 2, "JE": 5, "JNE": 4, "JAE": 6, "JB": 7}
 FPU_SECONDARY = {"FADD": 1, "FSUB": 2, "FMUL": 3, "FDIV": 4}
 FPU_UNARY_SECONDARY = {"ITOF": 5, "FTOI": 6, "FTOU": 7}
 
@@ -721,7 +711,7 @@ def _encode_binary_register_instruction(
 
 
 def _encode_not_instruction(instruction: Instruction) -> list[int]:
-    """Encode ``NOT destination, source``; the unused source-A field is zero."""
+    """Encode ``NOT destination, source``; the unused source-B field is zero."""
     _require_operands(instruction, 2)
     destination, source = instruction.operands
     return [
@@ -729,8 +719,8 @@ def _encode_not_instruction(instruction: Instruction) -> list[int]:
             opcode=0b0000,
             destination=_register(destination, "destination"),
             function=0b110,
-            source_a=0,
-            source_b=_register(source, "source"),
+            source_a=_register(source, "source"),
+            source_b=0,
         )
     ]
 
@@ -738,7 +728,7 @@ def _encode_not_instruction(instruction: Instruction) -> list[int]:
 def _encode_shift_instruction(
     instruction: Instruction, symbols: Mapping[str, int], address: int
 ) -> list[int]:
-    """Encode the shift-specific ``opcode/0/IMM5/source/destination`` form."""
+    """Encode ``SH/ASH destination, amount_register, immediate`` in place."""
     _require_operands(instruction, 3)
     destination_operand, source_operand, immediate_operand = instruction.operands
     immediate = _signed(
@@ -750,9 +740,8 @@ def _encode_shift_instruction(
     opcode = 0b0010 if instruction.mnemonic == "SH" else 0b0011
     word = (
         opcode << 12
-        | 0 << 11                              # [11]    reserved, always zero
-        | (immediate & 0b1_1111) << 6          # [10:6]  signed shift amount
-        | _register(source_operand, "source") << 3  # [5:3] source register
+        | _encode_immediate(immediate, 5)      # [11:7] signed shift displacement
+        | _register(source_operand, "shift amount source") << 3
         | _register(destination_operand, "destination")  # [2:0] destination
     )
     return [word]
@@ -779,12 +768,12 @@ def _encode_addi_instruction(
 
     immediate = _signed(
         _value(immediate_operand, symbols, address),
-        9,
+        8,
         immediate_operand.first(),
         "immediate",
     )
     return [
-        _encode_split_immediate_9(
+        _encode_immediate_8(
             opcode=0b0100, immediate=immediate, register=destination
         )
     ]
@@ -793,7 +782,7 @@ def _encode_addi_instruction(
 def _encode_load_immediate_instruction(
     instruction: Instruction, symbols: Mapping[str, int], address: int
 ) -> list[int]:
-    """Encode LLI/LUI's split byte and its selector bit."""
+    """Encode LLI/LUI's byte in [11:4] and selector in bit [3]."""
     _require_operands(instruction, 2)
     destination_operand, immediate_operand = instruction.operands
     destination = _register(destination_operand, "destination")
@@ -803,13 +792,10 @@ def _encode_load_immediate_instruction(
         immediate_operand.first(),
         "immediate",
     )
-    upper_byte = int(instruction.mnemonic == "LUI")
     return [
-        0b0101 << 12
-        | (immediate & 0b11_1111) << 6  # [11:6] immediate[5:0]
-        | upper_byte << 5               # [5]    0 = LLI, 1 = LUI
-        | ((immediate >> 6) & 0b11) << 3  # [4:3] immediate[7:6]
-        | destination                   # [2:0] destination register
+        _encode_load_immediate_word(
+            destination, immediate, upper=instruction.mnemonic == "LUI"
+        )
     ]
 
 
@@ -817,9 +803,8 @@ def _encode_load_immediate_word(destination: int, immediate: int, *, upper: bool
     """Return one LLI/LUI word for an already validated byte value."""
     return (
         0b0101 << 12
-        | (immediate & 0b11_1111) << 6
-        | int(upper) << 5
-        | ((immediate >> 6) & 0b11) << 3
+        | _encode_immediate(immediate, 8)
+        | int(upper) << 3
         | destination
     )
 
@@ -863,19 +848,20 @@ def _encode_li_instruction(
     if short_value is not None:
         return [_encode_load_immediate_word(destination, short_value, upper=False)]
 
-    high_byte = (value >> 8) & 0xFF
     low_byte = value & 0xFF
+    signed_low = low_byte if low_byte < 0x80 else low_byte - 0x100
+    high_byte = ((value - signed_low) >> 8) & 0xFF
     return [
         _encode_load_immediate_word(destination, high_byte, upper=True),
-        _encode_split_immediate_9(
-            opcode=0b0100, immediate=low_byte, register=destination
+        _encode_immediate_8(
+            opcode=0b0100, immediate=signed_low, register=destination
         ),
     ]
 
 
 def _encode_addi_word(register: int, immediate: int) -> int:
-    """Return one ADDI word for a validated signed nine-bit immediate."""
-    return _encode_split_immediate_9(
+    """Return one ADDI word for a validated signed eight-bit immediate."""
+    return _encode_immediate_8(
         opcode=0b0100, immediate=immediate, register=register
     )
 
@@ -913,7 +899,7 @@ def _encode_base_memory_instruction(
     opcode = 0b0110 if instruction.mnemonic == "LD" else 0b0111
     return [
         opcode << 12
-        | displacement << 6  # [11:6] signed displacement
+        | _encode_immediate(displacement, 6)  # [11:6] signed displacement
         | pointer << 3       # [5:3] pointer register
         | data_register      # [2:0] load destination / store source
     ]
@@ -922,7 +908,7 @@ def _encode_base_memory_instruction(
 def _encode_stack_memory_instruction(
     instruction: Instruction, symbols: Mapping[str, int], address: int
 ) -> list[int]:
-    """Encode LDSP/STSP using the same split IMM9 layout as ADDI."""
+    """Encode LDSP/STSP using the same IMM8 layout as ADDI."""
     _require_operands(instruction, 2)
     register_operand, immediate_operand = instruction.operands
     register_description = (
@@ -931,13 +917,13 @@ def _encode_stack_memory_instruction(
     register = _register(register_operand, register_description)
     immediate = _signed(
         _value(immediate_operand, symbols, address),
-        9,
+        8,
         immediate_operand.first(),
         "SP displacement",
     )
     opcode = 0b1000 if instruction.mnemonic == "LDSP" else 0b1001
     return [
-        _encode_split_immediate_9(
+        _encode_immediate_8(
             opcode=opcode, immediate=immediate, register=register
         )
     ]
@@ -989,16 +975,16 @@ def _encode_direct_jump_instruction(
 
     instruction_word = _encode_register_fields(
         opcode=0b1011,
-        destination=0,
+        destination=destination,
         function=function,
         source_a=0,
-        source_b=destination,
+        source_b=0,
     )
     return [instruction_word, _jump_target(target_operand, symbols, address)]
 
 
 def _encode_single_register_instruction(instruction: Instruction) -> list[int]:
-    """Encode PUSH, POP, or JMPR; each stores its register in bits [2:0]."""
+    """Encode PUSH/JMPR sources in [2:0] and POP destinations in [11:9]."""
     _require_operands(instruction, 1)
     opcode, function = {
         "PUSH": (0b1100, 0b001),
@@ -1009,10 +995,10 @@ def _encode_single_register_instruction(instruction: Instruction) -> list[int]:
     return [
         _encode_register_fields(
             opcode=opcode,
-            destination=0,
+            destination=register if instruction.mnemonic == "POP" else 0,
             function=function,
-            source_a=0,
-            source_b=register,
+            source_a=0 if instruction.mnemonic == "POP" else register,
+            source_b=0,
         )
     ]
 
@@ -1024,10 +1010,10 @@ def _encode_jalr_instruction(instruction: Instruction) -> list[int]:
     return [
         _encode_register_fields(
             opcode=0b1101,
-            destination=0,
+            destination=_register(destination_operand, "return-address destination"),
             function=0b010,
             source_a=_register(source_operand, "jump target source"),
-            source_b=_register(destination_operand, "return-address destination"),
+            source_b=0,
         )
     ]
 
@@ -1047,8 +1033,8 @@ def _encode_fpu_instruction(instruction: Instruction) -> list[int]:
             opcode=0b1110,
             destination=_register(destination_operand, "destination"),
             function=FPU_UNARY_SECONDARY[instruction.mnemonic],
-            source_a=0,
-            source_b=_register(source_operand, "source"),
+            source_a=_register(source_operand, "source"),
+            source_b=0,
         )
     ]
 
@@ -1068,10 +1054,10 @@ def encode_instruction(
         return [
             _encode_register_fields(
                 opcode=0b1011,
-                destination=0,
+                destination=0 if mnemonic == "J" else 0b111,
                 function=function,
                 source_a=0,
-                source_b=0 if mnemonic == "J" else 0b111,
+                source_b=0,
             ),
             _jump_target(instruction.operands[0], symbols, address),
         ]
@@ -1082,8 +1068,8 @@ def encode_instruction(
                 opcode=0b1101,
                 destination=0,
                 function=0b001,
-                source_a=0,
-                source_b=0b111,
+                source_a=0b111,
+                source_b=0,
             )
         ]
     if mnemonic == "MOV":

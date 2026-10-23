@@ -58,138 +58,60 @@ async def _expect_decoded(
 
 @cocotb.test()
 async def assembled_integer_and_immediate_forms_decode_correctly(dut: Dut) -> None:
-    await _expect_decoded(
-        dut, "ADD R4, R2, R3", op_primary=0, dst=4, op_secondary=1, src_a=2, src_b=3
-    )
-    await _expect_decoded(
-        dut, "NOT R4, R3", op_primary=0, dst=4, op_secondary=6, src_a=0, src_b=3
-    )
-    await _expect_decoded(
-        dut, "SGE R4, R2, R3", op_primary=1, dst=4, op_secondary=0, src_a=2, src_b=3
-    )
-    await _expect_decoded(
-        dut,
-        "SH R2, R2, -1",
-        op_primary=2,
-        dst=2,
-        op_secondary=7,
-        src_a=2,
-        src_b=2,
-        immediate=0xFFFF,
-    )
-    await _expect_decoded(
-        dut,
-        "ADDI R3, -1",
-        op_primary=4,
-        dst=3,
-        op_secondary=7,
-        src_a=7,
-        src_b=3,
-        immediate=0xFFFF,
-    )
-    await _expect_decoded(
-        dut,
-        "LLI R2, 0xA5",
-        op_primary=5,
-        dst=2,
-        op_secondary=5,
-        src_a=2,
-        src_b=2,
-        immediate=0x00A5,
-    )
+    await _expect_decoded(dut, "ADD R4, R2, R3", op_primary=0, dst=4,
+                          op_secondary=1, src_a=2, src_b=3)
+    await _expect_decoded(dut, "NOT R4, R3", op_primary=0, dst=4,
+                          op_secondary=6, src_a=3, src_b=0)
+    for mnemonic, function in (("SGE", 3), ("SL", 2), ("SE", 5),
+                               ("SNE", 4), ("SAE", 6), ("SB", 7)):
+        await _expect_decoded(dut, f"{mnemonic} R4, R2, R3", op_primary=1,
+                              dst=4, op_secondary=function, src_a=2, src_b=3)
+    await _expect_decoded(dut, "SH R2, R3, -1", op_primary=2, dst=2,
+                          op_secondary=6, src_a=2, src_b=3, immediate=0xFFFF)
+    await _expect_decoded(dut, "ADDI R3, -1", op_primary=4, dst=3,
+                          op_secondary=7, src_a=3, src_b=6, immediate=0xFFFF)
+    for mnemonic, src_b in (("LLI", 2), ("LUI", 3)):
+        await _expect_decoded(dut, f"{mnemonic} R2, 0xA5", op_primary=5, dst=2,
+                              op_secondary=1, src_a=2, src_b=src_b, immediate=0xA5)
+    for mnemonic, function in (("FADD", 1), ("FSUB", 2), ("FMUL", 3), ("FDIV", 4)):
+        await _expect_decoded(dut, f"{mnemonic} R4, R2, R3", op_primary=14,
+                              dst=4, op_secondary=function, src_a=2, src_b=3)
+    for mnemonic, function in (("ITOF", 5), ("FTOI", 6), ("FTOU", 7)):
+        await _expect_decoded(dut, f"{mnemonic} R4, R3", op_primary=14,
+                              dst=4, op_secondary=function, src_a=3, src_b=0)
 
 
 @cocotb.test()
 async def assembled_memory_and_stack_forms_decode_correctly(dut: Dut) -> None:
-    await _expect_decoded(
-        dut,
-        "LD R4, [R2 - 1]",
-        op_primary=6,
-        dst=4,
-        op_secondary=7,
-        src_a=2,
-        src_b=4,
-        immediate=0xFFFF,
-    )
-    await _expect_decoded(
-        dut,
-        "ST R3, [ R2 + 1 ]",
-        op_primary=7,
-        dst=3,
-        op_secondary=1,
-        src_a=2,
-        src_b=3,
-        immediate=1,
-    )
-    await _expect_decoded(
-        dut,
-        "LDSP R4, -1",
-        op_primary=8,
-        dst=4,
-        op_secondary=7,
-        src_a=7,
-        src_b=4,
-        immediate=0xFFFF,
-    )
-    await _expect_decoded(
-        dut,
-        "STSP R3, 1",
-        op_primary=9,
-        dst=3,
-        op_secondary=1,
-        src_a=0,
-        src_b=3,
-        immediate=1,
-    )
-    await _expect_decoded(
-        dut, "PUSH R2", op_primary=12, dst=2, op_secondary=1, src_a=0, src_b=2
-    )
-    await _expect_decoded(
-        dut, "POP R3", op_primary=12, dst=3, op_secondary=2, src_a=0, src_b=3
-    )
+    await _expect_decoded(dut, "LD R4, [R2 - 1]", op_primary=6, dst=4,
+                          op_secondary=7, src_a=4, src_b=2, immediate=0xFFFF)
+    await _expect_decoded(dut, "ST R3, [ R2 + 1 ]", op_primary=7, dst=3,
+                          op_secondary=0, src_a=3, src_b=2, immediate=1)
+    await _expect_decoded(dut, "LDSP R4, -1", op_primary=8, dst=4,
+                          op_secondary=7, src_a=4, src_b=6, immediate=0xFFFF)
+    await _expect_decoded(dut, "STSP R3, 1", op_primary=9, dst=3,
+                          op_secondary=0, src_a=3, src_b=0, immediate=1)
+    await _expect_decoded(dut, "PUSH R2", op_primary=12, dst=0,
+                          op_secondary=1, src_a=2, src_b=0)
+    await _expect_decoded(dut, "POP R3", op_primary=12, dst=3,
+                          op_secondary=2, src_a=0, src_b=0)
 
 
 @cocotb.test()
 async def assembled_long_and_register_jumps_decode_correctly(dut: Dut) -> None:
-    await _expect_decoded(
-        dut,
-        "JNE R2, R3, 0x1234",
-        op_primary=10,
-        dst=0,
-        op_secondary=3,
-        src_a=2,
-        src_b=3,
-        immediate=0x1234,
-        is_long=1,
-    )
-    await _expect_decoded(
-        dut,
-        "JMP 0x1234",
-        op_primary=11,
-        dst=0,
-        op_secondary=1,
-        src_a=0,
-        src_b=0,
-        immediate=0x1234,
-        is_long=1,
-    )
-    await _expect_decoded(
-        dut,
-        "JAL R7, 0x1234",
-        op_primary=11,
-        dst=7,
-        op_secondary=2,
-        src_a=0,
-        src_b=7,
-        immediate=0x1234,
-        is_long=1,
-    )
-    await _expect_decoded(
-        dut, "JMPR R2", op_primary=13, dst=2, op_secondary=1, src_a=0, src_b=2
-    )
-    await _expect_decoded(
-        dut, "JALR R5, R2", op_primary=13, dst=5, op_secondary=2, src_a=2, src_b=5
-    )
+    for mnemonic, function in (("JGE", 3), ("JL", 2), ("JE", 5),
+                               ("JNE", 4), ("JAE", 6), ("JB", 7)):
+        await _expect_decoded(dut, f"{mnemonic} R2, R3, 0x1234", op_primary=10,
+                              dst=0, op_secondary=function, src_a=2, src_b=3,
+                              immediate=0x1234, is_long=1)
+    await _expect_decoded(dut, "JMP 0x1234", op_primary=11, dst=0,
+                          op_secondary=1, src_a=0, src_b=0, immediate=0x1234, is_long=1)
+    await _expect_decoded(dut, "JAL R7, 0x1234", op_primary=11, dst=7,
+                          op_secondary=2, src_a=0, src_b=0, immediate=0x1234, is_long=1)
+    await _expect_decoded(dut, "JMPR R2", op_primary=13, dst=0,
+                          op_secondary=1, src_a=2, src_b=0)
+    await _expect_decoded(dut, "JALR R5, R2", op_primary=13, dst=5,
+                          op_secondary=2, src_a=2, src_b=0)
 
 
 @cocotb.test()

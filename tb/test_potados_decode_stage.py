@@ -121,41 +121,49 @@ async def decode_stage_prepares_alu_compare_and_shift(dut: Dut) -> None:
 
     # NOP is the exact all-zero encoding. It writes the ALU result to ZERO.
     await _expect_execute_stage(
-        dut, 0b0000_000_000_000_000,
+        dut, 0x0000,
         writeback_source=0b001,
     )
 
     # ADD R4, R2, R3
     await _expect_execute_stage(
-        dut, 0b0000_100_001_010_011,
+        dut, 0x085A,
         operand_a=0x1234, operand_b=0x00F0, dst=0b100,
         alu_op=0b00001, writeback_source=0b001,
     )
 
     # NOT R4, R3
     await _expect_execute_stage(
-        dut, 0b0000_100_110_000_011,
-        operand_b=0x00F0, dst=0b100,
+        dut, 0x0983,
+        operand_a=0x00F0, dst=0b100,
         alu_op=0b00110, writeback_source=0b001,
     )
 
-    # SNE R4, R2, R3
-    await _expect_execute_stage(
-        dut, 0b0001_100_011_010_011,
-        operand_a=0x1234, operand_b=0x00F0, dst=0b100,
-        alu_op=0b01010, cmp_op=0b0100, writeback_source=0b001,
-    )
+    # Every ISA comparison function must select its internal comparator.
+    for word, comparison in (
+        (0x18DA, 1),  # SGE
+        (0x189A, 2),  # SL
+        (0x195A, 3),  # SE
+        (0x191A, 4),  # SNE
+        (0x199A, 5),  # SAE
+        (0x19DA, 6),  # SB
+    ):
+        await _expect_execute_stage(
+            dut, word,
+            operand_a=0x1234, operand_b=0x00F0, dst=0b100,
+            alu_op=0b01010, cmp_op=comparison, writeback_source=0b001,
+        )
 
     # SH R2, -1; the shift amount is the decoded signed IMM5.
     await _expect_execute_stage(
-        dut, 0b0010_011111_010_010,
+        dut, 0x2F82,
         operand_a=0x1234, operand_b=0xFFFF, dst=0b010,
         alu_op=0b01000, writeback_source=0b001,
     )
 
     # ASH R2, 1
     await _expect_execute_stage(
-        dut, 0b0011_000001_010_010,
+        dut, 0x3802,
         operand_a=0x1234, operand_b=0x0001, dst=0b010,
         alu_op=0b01001, writeback_source=0b001,
     )
@@ -173,49 +181,49 @@ async def decode_stage_prepares_immediate_and_memory_operations(dut: Dut) -> Non
 
     # ADDI R3, 1
     await _expect_execute_stage(
-        dut, 0b0100_000001_000_011,
+        dut, 0x4803,
         operand_a=0xBEEF, operand_b=0x0001, dst=0b011,
         alu_op=0b00001, writeback_source=0b001,
     )
 
     # LLI R2, 0xA5
     await _expect_execute_stage(
-        dut, 0b0101_100101_010_010,
+        dut, 0x5A52,
         operand_a=0x0000, operand_b=0x00A5, dst=0b010,
         alu_op=0b00100, writeback_source=0b001,
     )
 
     # LUI R2, 0xA5
     await _expect_execute_stage(
-        dut, 0b0101_100101_110_010,
+        dut, 0x5A5A,
         operand_a=0x0000, operand_b=0xA500, dst=0b010,
         alu_op=0b00100, writeback_source=0b001,
     )
 
     # LD R1, [R6 + 1]
     await _expect_execute_stage(
-        dut, 0b0110_000001_110_001,
+        dut, 0x6831,
         operand_a=0x2000, operand_b=0x0001, dst=0b001,
         alu_op=0b00001, memory_op=0b01, writeback_source=0b010,
     )
 
     # ST R3, [R2 - 1]
     await _expect_execute_stage(
-        dut, 0b0111_111111_010_011,
+        dut, 0x7FD3,
         operand_a=0x1000, operand_b=0xFFFF, memory_write_data=0xBEEF, dst=0b011,
         alu_op=0b00001, memory_op=0b10,
     )
 
     # LDSP R3, [SP + 1]
     await _expect_execute_stage(
-        dut, 0b1000_000001_000_011,
+        dut, 0x8803,
         operand_a=0x0400, operand_b=0x0001, dst=0b011,
         alu_op=0b00001, memory_op=0b01, writeback_source=0b010,
     )
 
     # STSP R3, [SP - 1]
     await _expect_execute_stage(
-        dut, 0b1001_111111_111_011,
+        dut, 0x9FF3,
         operand_a=0x0400, operand_b=0xFFFF, memory_write_data=0xBEEF, dst=0b011,
         alu_op=0b00001, memory_op=0b10,
     )
@@ -229,47 +237,54 @@ async def decode_stage_prepares_jumps_and_rejects_partial_long_words(dut: Dut) -
     await _write_register(dut, 0b010, 0x1111)
     await _write_register(dut, 0b011, 0x2222)
 
-    # JNE R2, R3, 0xBEEF
-    await _expect_execute_stage(
-        dut, 0b1010_000_011_010_011,
-        pc=0x0200, next_pc=0x0202,
-        operand_a=0x1111, operand_b=0x2222, jump_target=0xBEEF,
-        alu_op=0b01011, cmp_op=0b0100, jump_op=0b01,
-        instruction_high=0xBEEF, high_valid=1,
-    )
+    for word, comparison in (
+        (0xA0DA, 1),  # JGE
+        (0xA09A, 2),  # JL
+        (0xA15A, 3),  # JE
+        (0xA11A, 4),  # JNE
+        (0xA19A, 5),  # JAE
+        (0xA1DA, 6),  # JB
+    ):
+        await _expect_execute_stage(
+            dut, word,
+            pc=0x0200, next_pc=0x0202,
+            operand_a=0x1111, operand_b=0x2222, jump_target=0xBEEF,
+            alu_op=0b01011, cmp_op=comparison, jump_op=0b01,
+            instruction_high=0xBEEF, high_valid=1,
+        )
 
     # JMP 0xCAFE
     await _expect_execute_stage(
-        dut, 0b1011_000_001_000_000,
+        dut, 0xB040,
         pc=0x0300, next_pc=0x0302, jump_target=0xCAFE, jump_op=0b10,
         instruction_high=0xCAFE, high_valid=1,
     )
 
     # JAL 0xCAFE, R3
     await _expect_execute_stage(
-        dut, 0b1011_000_010_000_011,
-        pc=0x0300, next_pc=0x0302, operand_b=0x2222, dst=0b011,
+        dut, 0xB680,
+        pc=0x0300, next_pc=0x0302, dst=0b011,
         jump_target=0xCAFE, jump_op=0b10, writeback_source=0b100,
         instruction_high=0xCAFE, high_valid=1,
     )
 
     # JMPR R3
     await _expect_execute_stage(
-        dut, 0b1101_000_001_000_011,
-        operand_b=0x2222, jump_target=0x2222, dst=0b011, jump_op=0b10,
+        dut, 0xD043,
+        operand_a=0x2222, jump_target=0x2222, jump_op=0b10,
     )
 
-    # JALR R2, R3
+    # JALR R3, R2
     await _expect_execute_stage(
-        dut, 0b1101_000_010_010_011,
-        operand_a=0x1111, operand_b=0x2222, jump_target=0x1111,
+        dut, 0xD682,
+        operand_a=0x1111, jump_target=0x1111,
         dst=0b011, jump_op=0b10,
         writeback_source=0b100,
     )
 
     # A long instruction without its high word must not enter execute.
     await _expect_execute_stage(
-        dut, 0b1010_000_000_010_011,
+        dut, 0xA0DA,
         valid=0, pc=0, next_pc=0,
         instruction_high=0xBEEF, high_valid=0,
     )
@@ -286,34 +301,34 @@ async def decode_stage_prepares_stack_fpu_and_halt(dut: Dut) -> None:
 
     # PUSH R3
     await _expect_execute_stage(
-        dut, 0b1100_000_001_000_011,
-        operand_a=0x0400, memory_write_data=0x2222, dst=0b011,
+        dut, 0xC043,
+        operand_a=0x0400, memory_write_data=0x2222,
         alu_op=0b00001, memory_op=0b10, stack_pointer_op=0b10,
     )
 
     # POP R2
     await _expect_execute_stage(
-        dut, 0b1100_000_010_000_010,
+        dut, 0xC480,
         operand_a=0x03FF, dst=0b010, alu_op=0b00001,
         memory_op=0b01, stack_pointer_op=0b11, writeback_source=0b010,
     )
 
     # FADD R4, R2, R3
     await _expect_execute_stage(
-        dut, 0b1110_100_001_010_011,
+        dut, 0xE85A,
         operand_a=0x1111, operand_b=0x2222, dst=0b100,
         fpu_op=0b0001, writeback_source=0b011,
     )
 
     # FTOI R4, R3
     await _expect_execute_stage(
-        dut, 0b1110_100_110_000_011,
+        dut, 0xE983,
         operand_a=0x2222, dst=0b100, fpu_op=0b0101,
         writeback_source=0b011,
     )
 
     # HALT
-    await _expect_execute_stage(dut, 0b1111_000_000_000_000, halt=1)
+    await _expect_execute_stage(dut, 0xF000, halt=1)
 
 
 def _runner() -> Runner:

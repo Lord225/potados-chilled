@@ -40,7 +40,7 @@ typedef enum logic[3:0] {
     FPU_DIV,
     FPU_FTOI,
     FPU_ITOF,
-    FPU_UTOF
+    FPU_FTOU
 } fpu_op_t;
 
 typedef enum logic[2:0] {
