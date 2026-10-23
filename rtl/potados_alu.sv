@@ -125,7 +125,9 @@ module potados_alu  (
                 out_ready_next  = 1'b1;
             end
             ALU_MUL: begin
-                alu_output_next = operard_a * operard_b;
+                // The hardware multiplier is unsigned 8 x 8 with a full
+                // 16-bit product; upper operand bytes are ignored.
+                alu_output_next = {8'b0, operard_a[7:0]} * {8'b0, operard_b[7:0]};
                 cmp_output_next = CMP_RESULT_NONE;
                 out_ready_next  = 1'b1;
             end

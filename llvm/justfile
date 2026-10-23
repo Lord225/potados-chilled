@@ -1,0 +1,47 @@
+set shell := ["sh", "-eu", "-c"]
+
+ROOT := justfile_directory()
+PYTHON := env_var_or_default("PYTHON", "python3")
+
+default:
+    @just --list
+
+# Build the pinned LLVM 23 tools, including the IR linker.
+build-llvm:
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/build.py" llvm
+
+# Build the loadable POTADOS target (build LLVM first if needed).
+build-backend:
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/build.py" backend
+
+# Build LLVM and the target module.
+build:
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/build.py" all
+
+# Compile an arbitrary C or LLVM-IR source; the backend must already be built.
+compile source output opt="-O2":
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/compile.py" "{{ source }}" -o "{{ output }}" "{{ opt }}"
+
+# Compile examples/src/<program>.c and write examples/build/<program>.asm.
+example program="sample" opt="-O2":
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/compile.py" "{{ ROOT }}/examples/src/{{ program }}.c" -o "{{ ROOT }}/examples/build/{{ program }}.asm" "{{ opt }}"
+
+# Run an assembly, hex, or binary image with the cocotb/Verilator RTL simulator.
+emulator program cycles="1000000":
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/run.py" run "{{ program }}" --max-cycles "{{ cycles }}"
+
+# Open the RTL clock/register/memory debugger.
+emulator-cui program:
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/run.py" debug "{{ program }}"
+
+# Compile, assemble, run, and check every maintained example at five levels.
+verify-programs:
+    "{{ PYTHON }}" "{{ ROOT }}/scripts/verify.py"
+
+# Run the RTL simulator and backend integration tests.
+test:
+    "{{ PYTHON }}" -m pytest -q "{{ ROOT }}/tests"
+
+# Run focused compiled-program RTL checks, including memory and pipeline events.
+test-rtl:
+    "{{ PYTHON }}" -m pytest -q "{{ ROOT }}/tests/test_rtl.py"

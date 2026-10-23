@@ -6,6 +6,16 @@
     "*.cst": "plaintext"
   },
   "cSpell.enabled": false,
+  "files.watcherExclude": {
+    "**/llvm/llvm-project/**": true,
+    "**/llvm/build/**": true
+  },
+  "search.exclude": {
+    "llvm/llvm-project": true,
+    "llvm/build": true
+  },
+  "python.analysis.exclude": ["llvm/llvm-project", "llvm/build", "build"],
+  "basedpyright.analysis.exclude": ["llvm/llvm-project", "llvm/build", "build"],
   "terminal.integrated.profiles.linux": {
     "zsh": {
       "path": "/bin/zsh",
@@ -31,6 +41,7 @@
   "python.pythonPath": "${workspaceFolder}/.venv/bin/python",
   "basedpyright.analysis.extraPaths": [
     "./tb",
-    "./asm/src"
+    "./asm/src",
+    "./llvm/potados-emulator/src"
   ]
 }

@@ -1,0 +1,26 @@
+{
+  "sample": {
+    "r2": 42
+  },
+  "arithmetic": {
+    "r2": 64443
+  },
+  "recursion": {
+    "r2": 728
+  },
+  "memory": {
+    "r2": 4701
+  },
+  "shifts": {
+    "r2": 57352
+  },
+  "wide_integers": {
+    "r2": 8307
+  },
+  "division": {
+    "r2": 65434
+  },
+  "mmio": {
+    "r2": 42
+  }
+}

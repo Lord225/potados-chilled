@@ -151,7 +151,7 @@ def _expected_output(
     if alu_op == ALU_NOT:
         return (~operand_a) & 0xFFFF, CMP_RESULT_NONE, 1
     if alu_op == ALU_MUL:
-        return (operand_a * operand_b) & 0xFFFF, CMP_RESULT_NONE, 1
+        return (operand_a & 0xFF) * (operand_b & 0xFF), CMP_RESULT_NONE, 1
     if alu_op in (ALU_SH, ALU_ASH):
         shift = _signed16(operand_b)
         if shift < 0:
@@ -216,8 +216,13 @@ async def multiply_and_shift_operations(dut: Dut) -> None:
     await _reset(dut)
 
     await _execute(dut, alu_op=ALU_MUL, operand_a=0x1234, operand_b=3)
-    assert int(dut.alu_output.value) == 0x369C
+    assert int(dut.alu_output.value) == 0x009C
     assert int(dut.out_ready.value) == 1
+
+    await _execute(dut, alu_op=ALU_MUL, operand_a=0x12FF, operand_b=0xABFF)
+    assert int(dut.alu_output.value) == 0xFE01
+    await _execute(dut, alu_op=ALU_MUL, operand_a=0xFF00, operand_b=0xFFFF)
+    assert int(dut.alu_output.value) == 0
 
     await _execute(dut, alu_op=ALU_SH, operand_a=1, operand_b=-4)
     assert int(dut.alu_output.value) == 0x0010

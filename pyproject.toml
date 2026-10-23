@@ -11,5 +11,5 @@ dependencies = [
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]
-pythonpath = ["asm/src"]
-testpaths = ["tb", "asm/tests"]
+pythonpath = ["asm/src", "llvm/potados-emulator/src"]
+testpaths = ["tb", "asm/tests", "llvm/tests"]

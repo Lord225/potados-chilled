@@ -76,7 +76,8 @@ read `SRC_A`. Assembly operand order is `OP DST, SRC_A, SRC_B`.
 | Instruction | Operation |
 | --- | --- |
 | `NOP` | No operation. |
-| `ADD`, `SUB`, `AND`, `OR`, `XOR`, `MUL` | Integer arithmetic and bitwise operations on A and B; `SUB` computes A minus B. Results wrap to 16 bits. |
+| `ADD`, `SUB`, `AND`, `OR`, `XOR` | Integer arithmetic and bitwise operations on A and B; `SUB` computes A minus B. Results wrap to 16 bits. |
+| `MUL` | Unsigned **8 x 8 -> 16** multiplication: `DST = (A & 0xFF) * (B & 0xFF)`. Upper operand bytes are ignored. The opcode remains `0000 DST 111 SRC_B SRC_A`. |
 | `NOT` | Bitwise complement of A. |
 | `SGE`, `SL` | Set `DST` to 1 when signed A is greater than or equal to / less than B; otherwise set it to 0. |
 | `SE`, `SNE` | Set `DST` to 1 when A equals / differs from B; otherwise set it to 0. |
