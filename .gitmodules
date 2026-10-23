@@ -1,0 +1,3 @@
+[submodule "kamp-llvm"]
+	path = kamp-llvm
+	url = https://github.com/Lord225/kamp-llvm
